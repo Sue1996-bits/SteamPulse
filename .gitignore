@@ -1,0 +1,45 @@
+# Data
+data/
+*.parquet
+*.csv.gz
+spark-warehouse/
+metastore_db/
+derby.log
+checkpoint/
+
+# ML artifacts
+mlruns/
+mlartifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+*.egg-info/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+keys/
+*.pem
+*.p8
+profiles.yml
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
+# Airflow
+logs/
+airflow.db
+airflow-webserver.pid
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/

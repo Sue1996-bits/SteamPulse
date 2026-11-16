@@ -1,0 +1,21 @@
+[project]
+name = "steampulse"
+version = "0.1.0"
+description = "Detect and forecast emerging complaint categories in Steam reviews (DATA 226, Fall 2026)."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "pyspark==3.5.8",
+    # PySpark 3.5 predates NumPy 2 / pandas 3; these caps were tested together
+    # (Arrow toPandas, createDataFrame, Spark ML GBT, pyspark.pandas).
+    "numpy<2",
+    "pandas>=2.2,<3",
+    "pyarrow>=14,<18",
+    "huggingface_hub",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+package = false
