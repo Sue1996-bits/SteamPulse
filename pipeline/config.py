@@ -14,9 +14,17 @@ RAW_DIR = DATA / "raw"
 QUARANTINE_DIR = DATA / "quarantine"
 STAGING_DIR = DATA / "staging"       # outputs land here until checks pass
 PUBLISH_DIR = DATA / "published"
+PROFILE_DIR = DATA / "profile"
 
 HF_DATASET = "adde023/steam-reviews"
-SNAPSHOT_ID = None  # TODO (profiling): dataset commit hash recorded at download time
+# Hugging Face commit hash; every download is pinned to it.
+SNAPSHOT_ID = "d0ec12b33dffb8109b683b2e07780e2fc6b97187"
+
+# Raw columns the pipeline reads. Author/user columns are deliberately excluded.
+RAW_COLUMNS = [
+    "recommendationid", "appid", "game", "language", "review",
+    "timestamp_created", "timestamp_updated", "voted_up",
+]
 
 LANGUAGE = "english"
 # Section 4 taxonomy. "unclassified" is a coverage status, not a modeled category.

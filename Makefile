@@ -1,10 +1,12 @@
 .DEFAULT_GOAL := help
 JAVA_MAJOR := $(shell java -version 2>&1 | awk -F'"' '/version/ {print $$2}' | cut -d. -f1)
 
-.PHONY: help check-java setup lock test profile manifest clean-cache
+FILES ?= 2
+
+.PHONY: help check-java setup lock test download-sample download profile manifest clean-cache
 
 help:  ## Show available commands
-	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 check-java:  ## Fail unless Java 17 is active
 	@if [ "$(JAVA_MAJOR)" != "17" ]; then \
@@ -21,8 +23,14 @@ lock:  ## Update uv.lock after editing pyproject.toml
 test: check-java  ## Run tests
 	uv run pytest -q
 
-profile: check-java  ## Profile the raw snapshot
-	uv run python -m pipeline.profile_raw
+download-sample:  ## Download the first FILES part files (default 2) to data/raw/
+	uv run python -m pipeline.download --files $(FILES)
+
+download:  ## Download all 663 part files (~23.5 GB) to data/raw/
+	uv run python -m pipeline.download
+
+profile: check-java  ## Profile every part file in data/raw/ (NOLOG=1 skips the scale log)
+	uv run python -m pipeline.profile_raw $(if $(NOLOG),--no-log)
 
 manifest:  ## Write data/published/manifest.json for the published outputs
 	uv run python -m pipeline.manifest
