@@ -10,7 +10,7 @@ Writes to data/profile/:
 Each run also appends a row to docs/scale_log.md. Pass --no-log for a
 throwaway rerun so duplicate runs don't end up in the scale totals.
 
-Profiling covers the whole corpus. Game selection must later be judged on the
+Profiling covers the whole dataset. Game selection must later be judged on the
 training period only (docs/temporal_policy.md).
 """
 import json

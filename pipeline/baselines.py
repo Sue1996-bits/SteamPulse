@@ -1,4 +1,4 @@
-"""Persistence and rolling-28 baselines, scored on the same test rows as B's model."""
+"""Persistence and rolling-28 baselines, scored on the same test rows as the trained model."""
 from pipeline.config import get_spark
 
 

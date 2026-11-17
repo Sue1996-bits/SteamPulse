@@ -1,6 +1,6 @@
 # Scale log
 
-Exclude irrelevant binaries and duplicate runs from scale totals.
+Each `make profile` run adds a row here automatically. For test reruns, use `make profile NOLOG=1` so the same run doesn't get counted twice.
 
 | Date | Stage | Source files | Relevant columns | Compressed bytes | Measured uncompressed bytes | Rows read | Unique rows | Filters | Partitions | Runtime | Output size | Machine / config | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|

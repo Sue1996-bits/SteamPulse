@@ -3,7 +3,7 @@ JAVA_MAJOR := $(shell java -version 2>&1 | awk -F'"' '/version/ {print $$2}' | c
 
 FILES ?= 2
 
-.PHONY: help check-java setup lock test download-sample download profile manifest clean-cache
+.PHONY: help check-java setup lock test download-sample download profile select-games manifest clean-cache
 
 help:  ## Show available commands
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -31,6 +31,9 @@ download:  ## Download all 663 part files (~23.5 GB) to data/raw/
 
 profile: check-java  ## Profile every part file in data/raw/ (NOLOG=1 skips the scale log)
 	uv run python -m pipeline.profile_raw $(if $(NOLOG),--no-log)
+
+select-games: check-java  ## Rank candidate games on the training period -> data/profile/candidates.csv
+	uv run python -m pipeline.select_games
 
 manifest:  ## Write data/published/manifest.json for the published outputs
 	uv run python -m pipeline.manifest

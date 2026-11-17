@@ -58,6 +58,7 @@ The raw snapshot goes in `data/raw/`, which Git ignores. Downloads are pinned to
 make download-sample   # first 2 part files (~65 MB), for a quick benchmark
 make download          # all 663 part files (~23.5 GB)
 make profile           # per-game profile -> data/profile/
+make select-games      # rank candidate games on the training period -> data/profile/candidates.csv
 ```
 
 ### 3. Run the pipeline
