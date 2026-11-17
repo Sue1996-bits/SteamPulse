@@ -25,6 +25,10 @@ SteamPulse is meant to help teams decide which issues are worth looking into. It
 
 ## Setup
 
+These steps go from a fresh clone to published tables. Run `make help` to list every command.
+
+### 1. Install
+
 Requirements: [uv](https://docs.astral.sh/uv/), `make`, and Java 17.
 
 ```bash
@@ -34,6 +38,24 @@ echo 'export JAVA_HOME="$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents
 echo 'export PATH="$JAVA_HOME/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 
+git clone https://github.com/Sue1996-bits/SteamPulse.git
+cd SteamPulse
 make setup   # checks Java, creates .venv from uv.lock
 make test
 ```
+
+### 2. Get the data
+
+_To be added._
+
+### 3. Run the pipeline
+
+_To be added._
+
+### 4. Check the outputs
+
+```bash
+make manifest   # writes data/published/manifest.json
+```
+
+The manifest is generated, never hand-edited. It records the dataset snapshot, cohort/label/feature versions, code commit, `uv.lock` hash, runtime versions, and row/file counts for every published table.
