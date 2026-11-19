@@ -30,9 +30,18 @@ RAW_COLUMNS = [
 # last days are incomplete, so the window stops at 2023-10-31.
 WINDOW_START = "2022-11-01"
 WINDOW_END = "2023-10-31"
-# Tentative end of the training period (~60% of the window), pending the
-# team's train/validation/test split. Game selection only looks at data up to here.
+# End of the training period (~60% of the window). Game selection only looks
+# at data up to here.
 TRAIN_END = "2023-05-31"
+
+# Games to model (see docs/temporal_policy.md, "Chosen games"). Apex is built first.
+GAMES = {
+    "1172470": "Apex Legends",
+    "1517290": "Battlefield 2042",
+    "1811260": "FIFA 23",
+    "1085660": "Destiny 2",
+    "359550": "Rainbow Six Siege",
+}
 
 LANGUAGE = "english"
 # Complaint taxonomy. "unclassified" is a coverage status, not a modeled category.

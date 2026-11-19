@@ -12,7 +12,7 @@ All days are UTC (`get_spark()` sets `spark.sql.session.timeZone=UTC`). A review
 |---|---|---|
 | Snapshot range | 2010-10-15 to 2023-11-03 | profile |
 | Analysis window | 2022-11-01 to 2023-10-31 (12 months) | `WINDOW_START`, `WINDOW_END` |
-| Training period (tentative) | 2022-11-01 to 2023-05-31 (~60%) | `TRAIN_END`, pending the train/validation/test split |
+| Training period | 2022-11-01 to 2023-05-31 (~60%) | `TRAIN_END` |
 
 The window ends on 2023-10-31 because the last days of the snapshot are incomplete. Collection ended in early November 2023, and games stop on different days (Nov 1-3). The whole dataset averages about 55,000 reviews a day, but Nov 2 has 30,223 and Nov 3 has 5,132. Those are partial days rather than a real drop, so they're left out.
 
@@ -75,7 +75,7 @@ Performance has the fewest matches, so at least one of Call of Duty, Battlefield
 
 Counter-Strike 2 isn't a good fit: 94% of its negative reviews match no category, and the switch from CS:GO to CS2 happens during the test period.
 
-### Proposed games (to discuss)
+### Proposed games
 
 Apex Legends (1172470) is proposed as the first game for the end-to-end prototype. It passes the forecast checks on every training day, has no gap days and averages about 39 strict English negatives a day. It came out in 2020, so there's no launch spike in the window.
 
@@ -86,4 +86,16 @@ Two options for the other four:
 | 1 | Battlefield 2042, FIFA 23, Destiny 2, Rainbow Six Siege | Covers every category, but performance depends on two games |
 | 2 | Call of Duty, Battlefield 2042, FIFA 23, Destiny 2 | More reviews in every category, but Call of Duty launched on 2022-10-28, so its launch period is in the training data |
 
-The final games and the date they were chosen will be added here once decided.
+### Chosen games
+
+Option 1 was chosen on 2026-11-19:
+
+| Game | App ID |
+|---|---|
+| Apex Legends | 1172470 |
+| Battlefield 2042 | 1517290 |
+| FIFA 23 | 1811260 |
+| Destiny 2 | 1085660 |
+| Rainbow Six Siege | 359550 |
+
+The list is `GAMES` in `pipeline/config.py`. Apex is built end to end first, then the other four are added.
