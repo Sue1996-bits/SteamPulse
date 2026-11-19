@@ -15,6 +15,12 @@ SteamPulse is meant to help teams decide which issues are worth looking into. It
 - **Complaint categories:** `crash`, `performance`, `match_server`, `monetization` (multi-label). Negative reviews that match none of these are kept as unclassified.
 - **Product:** batch data pipeline, rule-based emerging-issue detection, seven-day share forecast (Spark ML + MLflow), FastAPI service, and a Streamlit historical replay.
 
+## Data source
+
+The [Steam Reviews dataset](https://www.kaggle.com/datasets/kieranpoc/steam-reviews) by kieranpoc on Kaggle, used through its Parquet conversion on Hugging Face ([`adde023/steam-reviews`](https://huggingface.co/datasets/adde023/steam-reviews), snapshot `d0ec12b`). Licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/): non-commercial use with attribution.
+
+We filter, clean and aggregate the data; the raw files are not redistributed in this repository. Review excerpts are shown briefly and without user identifiers.
+
 ## Team
 
 | Member | Role | Responsibilities |
@@ -44,9 +50,16 @@ make setup   # checks Java, creates .venv from uv.lock
 make test
 ```
 
-### 2. Get the data
+### 2. Get the data and profile it
 
-_To be added._
+The raw snapshot goes in `data/raw/`, which Git ignores. Downloads are pinned to the snapshot hash in `pipeline/config.py`, and files already downloaded are skipped.
+
+```bash
+make download-sample   # first 2 part files (~65 MB), for a quick benchmark
+make download          # all 663 part files (~23.5 GB)
+make profile           # per-game profile -> data/profile/
+make select-games      # rank candidate games on the training period -> data/profile/candidates.csv
+```
 
 ### 3. Run the pipeline
 
