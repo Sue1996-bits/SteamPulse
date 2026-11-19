@@ -3,7 +3,7 @@ JAVA_MAJOR := $(shell java -version 2>&1 | awk -F'"' '/version/ {print $$2}' | c
 
 FILES ?= 2
 
-.PHONY: help check-java setup lock test download-sample download profile select-games manifest clean-cache
+.PHONY: help check-java setup lock test download-sample download profile select-games clean-reviews label-sample manifest clean-cache
 
 help:  ## Show available commands
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -34,6 +34,12 @@ profile: check-java  ## Profile every part file in data/raw/ (NOLOG=1 skips the 
 
 select-games: check-java  ## Rank candidate games on the training period -> data/profile/candidates.csv
 	uv run python -m pipeline.select_games
+
+clean-reviews: check-java  ## Build reviews_clean for the chosen games (APPS="1172470" for a subset)
+	uv run python -m pipeline.clean $(if $(APPS),--apps $(APPS))
+
+label-sample: check-java  ## Draw the hand-labeling sample (300 train + 150 later) -> data/samples/
+	uv run python -m pipeline.label_sample $(if $(APPS),--apps $(APPS)) $(if $(SEED),--seed $(SEED))
 
 manifest:  ## Write data/published/manifest.json for the published outputs
 	uv run python -m pipeline.manifest
