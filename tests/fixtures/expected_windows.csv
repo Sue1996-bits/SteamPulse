@@ -1,0 +1,9 @@
+app_id,as_of_date,category,C7,N7,recent_share,C28,N28,baseline_share,observed_lift_pp,observed_status,forecast_status,eligibility_reason,persistence_pred,rolling28_pred
+999,2023-02-04,crash,26,100,0.26,28,280,0.1,16.0,emerging,ok,,0.26,0.15161290322580645
+999,2023-02-04,performance,5,100,0.05,0,280,0.0,5.0,not_flagged,ok,,0.05,0.016129032258064516
+999,2023-02-04,match_server,14,100,0.14,56,280,0.2,-6.0,not_flagged,ok,,0.14,0.18064516129032257
+999,2023-02-04,monetization,0,100,0.0,0,280,0.0,0.0,not_flagged,ok,,0.0,0.0
+888,2023-02-04,crash,14,70,0.2,,,,,insufficient_data,insufficient_data,gap_in_window,,
+888,2023-02-04,performance,0,70,0.0,,,,,insufficient_data,insufficient_data,gap_in_window,,
+888,2023-02-04,match_server,0,70,0.0,,,,,insufficient_data,insufficient_data,gap_in_window,,
+888,2023-02-04,monetization,0,70,0.0,,,,,insufficient_data,insufficient_data,gap_in_window,,
