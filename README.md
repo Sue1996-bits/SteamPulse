@@ -61,6 +61,7 @@ make profile           # per-game profile -> data/profile/
 make select-games      # rank candidate games on the training period -> data/profile/candidates.csv
 make clean-reviews     # reviews_clean for the chosen games -> data/staging/reviews_clean/
 make label-sample      # hand-labeling sample -> data/samples/
+make daily             # daily_negative (+ daily_category once labels exist) -> data/staging/
 ```
 
 ### 3. Run the pipeline
