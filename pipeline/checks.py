@@ -30,8 +30,12 @@ TABLES = {
     "daily_category": (config.DAILY_CATEGORY_COLS, config.DAILY_CATEGORY_KEY),
     "forecast_features": (config.FORECAST_FEATURES_COLS, config.FORECAST_FEATURES_KEY),
     "forecast_results": (config.FORECAST_RESULTS_COLS, config.FORECAST_RESULTS_KEY),
+    "model_predictions": (config.FORECAST_RESULTS_COLS, config.FORECAST_RESULTS_KEY),
 }
-EXTRA_FILES = ["feature_manifest.json", "clean_summary.json", "baseline_scores.csv"]
+EXTRA_FILES = ["feature_manifest.json", "clean_summary.json", "baseline_scores.csv",
+               "model_manifest.json", "model_parity.csv", "model_scores.csv", "model_row_counts.csv",
+               "model_errors.csv", "model_feature_importance.csv", "model_card.md"]
+EXTRA_DIRS = ["model"]  # saved Spark models, loaded by the API through model_manifest.json
 
 
 @dataclass
@@ -166,10 +170,15 @@ def check_features(df: DataFrame) -> list[Check]:
     ]
 
 
-def check_results(df: DataFrame) -> list[Check]:
-    t = "forecast_results"
+def check_results(df: DataFrame, t: str = "forecast_results") -> list[Check]:
     ok = F.col("forecast_status") == "ok"
-    return [
+    out = []
+    if t == "model_predictions":
+        out.append(count_check(t, "trained_before_as_of",
+                               _bad(df, F.col("training_label_end").isNull()
+                                    | (F.col("training_label_end") > F.col("as_of_date"))),
+                               "rows predicted by a model trained on outcomes after as_of_date"))
+    return out + [
         allowed(df, t, "observed_status", config.OBSERVED_STATUSES),
         allowed(df, t, "forecast_status", config.FORECAST_STATUSES),
         in_unit_range(df, t, ["predicted_share", "recent_share", "baseline_share"]),
@@ -178,6 +187,25 @@ def check_results(df: DataFrame) -> list[Check]:
                          | (~ok & F.col("predicted_share").isNotNull())),
                     "rows where a prediction and forecast_status disagree"),
     ]
+
+
+def check_model_bundle(model: dict, features: dict | None, preds: DataFrame | None, root) -> list[Check]:
+    """The model bundle matches the feature manifest, its files exist, and predictions come from it."""
+    t = "model_bundle"
+    fmt_ok, order_ok = model.get("format") == "spark_pipeline", model.get("features") == config.FEATURE_COLS
+    out = [Check(t, "format", fmt_ok, "" if fmt_ok else f"format {model.get('format')!r}, expected 'spark_pipeline'"),
+           Check(t, "feature_order", order_ok, "" if order_ok else "features differ from FEATURE_COLS")]
+    if features is not None:
+        diff = [k for k in ("feature_version", "label_version", "snapshot_id") if model.get(k) != features.get(k)]
+        out.append(Check(t, "matches_feature_manifest", not diff, f"differs in {diff}" if diff else ""))
+    cats = model.get("categories", {})
+    missing = [c for c in config.CATEGORIES if not (root / cats.get(c, {}).get("path", "?")).is_dir()]
+    out.append(Check(t, "models_present", not missing, f"missing models for {missing}" if missing else ""))
+    if preds is not None:
+        other = _bad(preds, (F.col("model_version") != model.get("model_version"))
+                     | (F.col("training_label_end") != F.lit(model.get("training_label_end")).cast("date")))
+        out.append(count_check(t, "predictions_from_this_model", other, "model_predictions rows from another model"))
+    return out
 
 
 def reconcile(clean: DataFrame, neg: DataFrame | None, summary: dict) -> list[Check]:
@@ -218,6 +246,8 @@ def run_checks(tables: dict[str, DataFrame], summary: dict | None = None) -> lis
         results += check_features(tables["forecast_features"])
     if "forecast_results" in tables:
         results += check_results(tables["forecast_results"])
+    if "model_predictions" in tables:
+        results += check_results(tables["model_predictions"], "model_predictions")
     return results
 
 
@@ -233,6 +263,12 @@ def publish(table_names: list[str], label_version: str | None) -> None:
     for f in EXTRA_FILES:
         if (config.STAGING_DIR / f).exists():
             shutil.copy2(config.STAGING_DIR / f, config.PUBLISH_DIR / f)
+    for d in EXTRA_DIRS:
+        if (config.STAGING_DIR / d).exists():
+            if (config.PUBLISH_DIR / d).exists():
+                shutil.rmtree(config.PUBLISH_DIR / d)
+            shutil.copytree(config.STAGING_DIR / d, config.PUBLISH_DIR / d,
+                            ignore=shutil.ignore_patterns("*.crc", "_SUCCESS"))
     path = manifest.write_manifest(outputs, out_dir=config.PUBLISH_DIR, label_version=label_version)
     print(f"Published {', '.join(table_names)} -> {config.PUBLISH_DIR}; wrote {path.name}")
 
@@ -245,6 +281,12 @@ def main(do_publish: bool) -> None:
     summary_path = config.STAGING_DIR / "clean_summary.json"
     summary = json.loads(summary_path.read_text()) if summary_path.exists() else None
     results = run_checks(tables, summary)
+    bundle = config.STAGING_DIR / "model_manifest.json"
+    if bundle.exists():
+        fm = config.STAGING_DIR / "feature_manifest.json"
+        results += check_model_bundle(json.loads(bundle.read_text()),
+                                      json.loads(fm.read_text()) if fm.exists() else None,
+                                      tables.get("model_predictions"), config.STAGING_DIR)
 
     failed = [c for c in results if not c.passed]
     REPORT_PATH.write_text(json.dumps({

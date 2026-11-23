@@ -33,6 +33,9 @@ WINDOW_END = "2023-10-31"
 # End of the training period (~60% of the window). Game selection only looks
 # at data up to here.
 TRAIN_END = "2023-05-31"
+# End of the validation period (~80%). Forecast origins are split by their target
+# week: train ends by TRAIN_END, validation by VAL_END, test after (pipeline/train.py).
+VAL_END = "2023-08-15"
 
 # Games to model (see docs/temporal_policy.md, "Chosen games"). Apex is built first.
 GAMES = {
@@ -52,6 +55,7 @@ COHORT_POLICY = "strict_unedited"  # created_at == updated_at
 COHORT_VERSION = "v1"
 LABEL_VERSION = "rules_v1"  # rules in pipeline/labels.py; bump on any rule change
 FEATURE_VERSION = "v1"
+MODEL_VERSION = "gbt_v1"  # pipeline/train.py; bump when the model design or search changes
 
 # Detection and forecast thresholds. Provisional: tune on validation only, freeze by Nov 22.
 HISTORY_DAYS = 35
