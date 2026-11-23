@@ -120,5 +120,8 @@ def get_spark(app_name: str = "steampulse") -> SparkSession:
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.driver.memory", "8g")
         .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
+        # Read partition folders like app_id=1172470 back as strings, matching the schema.
+        .config("spark.sql.sources.partitionColumnTypeInference.enabled", "false")
+        .config("spark.ui.showConsoleProgress", "false")
         .getOrCreate()
     )

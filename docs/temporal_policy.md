@@ -46,6 +46,8 @@ A game-day is covered if the game has at least one review that day in any langua
 - A covered day with no English negatives is a real 0.
 - Forecast and alert windows that include a gap day return `insufficient_data`.
 
+`reviews_clean` keeps every language and both vote directions so the daily step can check coverage. It only holds unedited reviews, though, so a day whose reviews were all edited later would also count as a gap. That doesn't happen for any of the chosen games: each has unedited reviews on all 365 days of the window.
+
 Gaps are checked per game. No date in the last year is missing for the whole dataset, but some games have their own gaps (War Thunder has 12 zero-review days in the training period). None of the core candidates have any.
 
 ## Data quality
