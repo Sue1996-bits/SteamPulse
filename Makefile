@@ -3,7 +3,7 @@ JAVA_MAJOR := $(shell java -version 2>&1 | awk -F'"' '/version/ {print $$2}' | c
 
 FILES ?= 2
 
-.PHONY: help check-java setup lock test download-sample download profile select-games clean-reviews label-sample labels label-eval daily features baselines train mlflow-ui checks publish pipeline manifest clean-cache
+.PHONY: help check-java setup lock test download-sample download profile select-games clean-reviews label-sample labels label-eval daily features baselines alerts train mlflow-ui checks publish pipeline manifest clean-cache
 
 help:  ## Show available commands
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -55,6 +55,9 @@ features: check-java  ## Build forecast_features + feature_manifest.json (LABEL_
 
 baselines: check-java  ## Persistence and rolling-28 forecast_results + baseline_scores.csv
 	uv run python -m pipeline.baselines
+
+alerts: check-java  ## Alert counts, threshold sensitivity (validation) and what follows an alert (LABEL_VERSION=v; TEST=1 adds test)
+	uv run python -m pipeline.alerts $(if $(LABEL_VERSION),--label-version $(LABEL_VERSION)) $(if $(TEST),--include-test)
 
 train: check-java  ## GBT per category + MLflow -> data/staging/model/ (LABEL_VERSION=v; TEST=1 scores the test period, once)
 	uv run python -m pipeline.train $(if $(LABEL_VERSION),--label-version $(LABEL_VERSION)) $(if $(TEST),--score-test)
