@@ -80,8 +80,11 @@ def test_manifest_matches_the_api_contract(trained, feats):
         (fm["label_version"], fm["feature_version"], fm["snapshot_id"])
     assert m["training_label_end"] == m["replay_start"] == config.VAL_END  # refit on train + validation
     assert set(m["categories"]) == set(config.CATEGORIES)
+    assert m["model_version"] == config.MODEL_VERSION == "gbt_v2"
+    assert m["target"] == train.TARGET_FORMULAS["residual"]
     for c, v in m["categories"].items():
         assert (out / v["path"]).is_dir() and v["params"] in TINY_GRID
+        assert v["shrinkage"] in train.SHRINKAGE
         assert v["validation_winner"] in {config.MODEL_VERSION, *train.BASELINES}
     assert json.loads((out / "model_manifest.json").read_text())["mlflow_run_id"] == m["mlflow_run_id"]
 
@@ -169,6 +172,31 @@ def test_parity_rows_match_a_row_built_like_the_api(trained, feats):
         model = PipelineModel.load(str(out / m["categories"][r.category]["path"]))
         served = model.transform(spark.createDataFrame([tuple(values)], schema)).first().prediction
         assert min(1.0, max(0.0, served)) == pytest.approx(r.predicted_share, abs=m["parity"]["tolerance"])
+
+
+def test_residual_model_adds_the_correction_to_the_baseline(trained, feats):
+    """The saved pipeline ends with the add-back step, so serving only needs raw features."""
+    from pyspark.ml.feature import SQLTransformer
+
+    out, m = trained
+    rows = feats.where((F.col("category") == "crash") & (F.col("eligibility") == "eligible")).limit(20)
+    model = PipelineModel.load(str(out / m["categories"]["crash"]["path"]))
+    assert isinstance(model.stages[-1], SQLTransformer)
+    got = model.transform(rows).select("share_28d", train.BASE_FILLED, train.RESIDUAL_PRED, "prediction").toPandas()
+    lam = m["categories"]["crash"]["shrinkage"]
+    assert (got.share_28d - got[train.BASE_FILLED]).abs().max() < 1e-12  # eligible rows need no imputing
+    assert (got.prediction - (got[train.BASE_FILLED] + lam * got[train.RESIDUAL_PRED])).abs().max() < 1e-12
+
+
+def test_level_target_reproduces_gbt_v1(feats, tmp_path):
+    m = train.run(feats, VERSION, out_dir=tmp_path, grid=TINY_GRID[:1], target="level",
+                  tracking_uri=(tmp_path / "mlruns").as_uri())
+    assert m["model_version"] == "gbt_v1" and m["target"] == train.TARGET_FORMULAS["level"]
+    assert all(v["shrinkage"] is None for v in m["categories"].values())
+    model = PipelineModel.load(str(tmp_path / m["categories"]["crash"]["path"]))
+    assert type(model.stages[-1]).__name__ == "GBTRegressionModel"
+    scores = pd.read_csv(tmp_path / "model_scores.csv")
+    assert set(scores.method) == {"gbt_v1", *train.BASELINES}
 
 
 def test_mlflow_has_the_run(trained):
