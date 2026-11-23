@@ -59,15 +59,15 @@ show tests/fixtures/expected_windows.csv and the hand calculation above as a sta
 
 ## Integration handoffs
 
-* A: review counts, gap/zero handling, covered dates, cohort and version selection. Replace the
-  fixture loader with a reader for one checked, version-pinned publication of the feature,
-  daily and evidence tables. Use canonical features in production.
-* B: supply saved transforms/models, ordered feature manifest, versions, training outcome cutoff,
-  validation method selection, and offline predictions for agreed rows. Load once, reject
-  incompatible features and models trained beyond the replay day, and compare all four API
-  predictions with offline outputs before describing this as model deployment.
-* C: repeat contract checks with real data, measure cold and warm latency on the presentation machine,
-  restart both services and capture a real replay for backup. Add evidence to the report and slides.
+* A: the versioned publication reader now serves Wren's `rules_v2` Parquet tables and canonical
+  features. The actual bundle was loaded and the five game/date ranges were checked.
+* B: the app loads the saved `gbt_v2` Spark pipelines. The real-data replay check matched all four
+  API predictions to Wren's offline predictions within the manifest tolerance (1e-9), and confirmed
+  the 2023-08-15 training cutoff and the `match_server` alert. `best_validation` remains unavailable
+  in the API; use the explicit model and baseline methods for the demo.
+* C: the real API replay, evidence endpoint, baselines and cutoff failure state were checked. Before
+  presenting, restart both services on the presentation machine, measure cold and warm latency,
+  and capture a real replay for the report/slides backup.
 
 ## Serving a team publication
 
@@ -77,16 +77,12 @@ forecast_features, reviews_clean, and review_labels from the same run. Use the e
 strict_unedited/v1 cohort. The app filters labels and features to the manifest versions.
 For large source tables, export the demo games before starting the service.
 
-The optional model_manifest.json is the proposed B-to-C interface. Supply format
-spark_pipeline, model_version, training_label_end (ISO date), feature_version,
-label_version, snapshot_id, features (ordered column names), and categories
-(an object mapping each category ID to an object with path pointing to its saved
-Spark PipelineModel). Include every fitted transform in each saved pipeline. The API
-loads all four at startup and rejects requests before the training cutoff. For a
-linear model exported on raw features, format linear takes intercept and weights per
-category. The synthetic publication test shows this form. Actual B artifacts still
-require parity testing. Keep best_validation unavailable until the validation winner
-and selection cutoff are published.
+The model manifest uses `spark_pipeline`, model_version, training_label_end (ISO date), feature_version,
+label_version, snapshot_id, ordered features, and per-category saved Spark PipelineModel paths.
+The API loads all four at startup and rejects requests before the training cutoff. The handoff
+check is `application.check_apex_replay`; it compares every API prediction with the offline bundle
+and checks that the expected alert reproduces. The API's `best_validation` method remains unavailable;
+use `trained_model`, `persistence`, or `rolling28` for the current replay.
 
 Run both application suites with:
 `uv run --with-requirements application/requirements.txt python -m unittest application.replay_checks application.publication_checks`.
