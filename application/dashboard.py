@@ -20,9 +20,13 @@ def dashboard():
     meta = fetch("/health")
     st.caption(f"Historical replay · snapshot {meta['source_snapshot']} · UTC")
     games = {g["title"]: g for g in fetch("/games")}
-    game = games[st.selectbox("Game", sorted(games, reverse=True))]
+    titles = sorted(games, reverse=True)
+    default_game = "Apex Legends" if "Apex Legends" in games else titles[0]
+    game = games[st.selectbox("Game", titles, index=titles.index(default_game))]
     end = date.fromisoformat(game["end_date"])
-    day = st.date_input("As of", end, min_value=date.fromisoformat(game["start_date"]), max_value=end)
+    demo_day = date(2023, 8, 27)
+    default_day = demo_day if game["app_id"] == "1172470" and demo_day.isoformat() in game["eligible_dates"] else end
+    day = st.date_input("As of", default_day, min_value=date.fromisoformat(game["start_date"]), max_value=end)
     method = st.selectbox("Forecast method", ["trained_model", "persistence", "rolling28", "best_validation"])
     params = dict(app_id=game["app_id"], as_of_date=day.isoformat())
     try:
@@ -35,6 +39,7 @@ def dashboard():
         frame = pd.DataFrame(rows).sort_values("observed_lift_pp", ascending=False)
         st.subheader(f"Forecast · {rows[0]['forecast_start']} to {rows[0]['forecast_end']}")
         st.caption(f"Recent negative reviews: {rows[0]['sample_counts']['N7']} · Shares are fractions from 0 to 1.")
+        st.caption("Observed alert status uses the latest 7 days versus the prior 28-day baseline; the forecast estimates the following 7 days.")
         st.dataframe(frame[["category", "observed_lift_pp", "observed_status", "recent_share",
                             "predicted_share", "predicted_change_pp", "forecast_status", "eligibility_reason"]], hide_index=True)
     cat = st.selectbox("Complaint history and evidence", ["crash", "performance", "match_server", "monetization"])
