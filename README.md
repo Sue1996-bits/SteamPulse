@@ -78,6 +78,7 @@ Add `LOG=1` to a measured run to append its timings to `docs/scale_log.md`. Each
 make clean-reviews     # reviews_clean for the chosen games -> data/staging/reviews_clean/
 make label-sample      # hand-labeling sample -> data/samples/ (see docs/labeling_guide.md)
 make labels            # rule labels for English negatives -> data/staging/review_labels/
+make label-eval GOLD=data/samples/label_gold_226.csv   # rules vs hand labels: precision, recall, F1
 make daily             # daily_negative (+ daily_category with LABELS=path LABEL_VERSION=v)
 make features LABEL_VERSION=v   # forecast_features + feature_manifest.json
 make baselines         # persistence and rolling-28 forecasts + MAE
