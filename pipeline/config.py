@@ -83,27 +83,8 @@ DAILY_CATEGORY_COLS = [
 # forecast_features, key: app_id + as_of_date + category + feature_version
 FORECAST_FEATURES_KEY = ["app_id", "as_of_date", "category", "feature_version"]
 FORECAST_FEATURES_META = ["eligibility", "feature_max_date", "source_snapshot", "label_version"]
-# Fixed order, exported as feature_manifest.json. Every feature uses dates <= as_of_date.
-# Windows end on as_of_date t: 1d = t, 7d = t-6..t, 14d = t-13..t, 28d = t-27..t,
-# prior7d = t-13..t-7, baseline = t-34..t-7. Shares are ratios of sums.
-FEATURE_COLS = [
-    "c_1d", "c_7d", "c_14d", "c_28d",           # category counts
-    "n_1d", "n_7d", "n_14d", "n_28d",           # English negative totals
-    "share_7d", "share_14d", "share_28d", "share_prior7d", "baseline_share",
-    "week_change_pp",                           # 100 x (share_7d - share_prior7d)
-    "lift_pp",                                  # 100 x (share_7d - baseline_share)
-    "count_std_28d", "zero_day_rate_28d",       # spread of daily category counts, t-27..t
-    "weekday",                                  # 1 = Monday .. 7 = Sunday
-    "prior7d_missing",                          # 1 when share_prior7d is null (no negatives that week)
-]
-LABEL_COL = "target_share_next7"  # never a feature: sum C / sum N over t+1..t+7
-# Target-side columns, also never features. target_n_next7 is the future denominator,
-# so rows with a null target can be counted and explained.
-TARGET_COLS = [LABEL_COL, "target_n_next7"]
-FORECAST_FEATURES_COLS = [*FORECAST_FEATURES_KEY, *FEATURE_COLS,
-                          *FORECAST_FEATURES_META, *TARGET_COLS]
-# eligibility values, checked in this order
-ELIGIBILITY_VALUES = ["insufficient_history", "gap_in_window", "low_volume", "eligible"]
+FEATURE_COLS: list[str] = []  # TODO (features): fixed order, exported as feature_manifest.json
+LABEL_COL = "target_share_next7"  # never a feature
 
 # review_labels (labeling step), key: review_id + category + label_version.
 # One row per assigned label. No row means the category was not assigned, and the
