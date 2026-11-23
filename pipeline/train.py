@@ -1,7 +1,7 @@
 """Train and evaluate the seven-day share forecast: one Spark GBT model per category.
 
-    python -m pipeline.train --label-version rules_v1               # search, refit, export
-    python -m pipeline.train --label-version rules_v1 --score-test  # also score the test period (once, at the end)
+    python -m pipeline.train --label-version rules_v2               # search, refit, export
+    python -m pipeline.train --label-version rules_v2 --score-test  # also score the test period (once, at the end)
 
 Splits are in pipeline/splits.py (by target week, with a purged week at each
 boundary). Only eligible rows with a target are fitted or scored. Per category,

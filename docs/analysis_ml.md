@@ -44,7 +44,7 @@ The work went in the order of the data, and every step was checked against the n
 
 | Decision | Alternatives | Why |
 |---|---|---|
-| Keyword rules with evidence (`rules_v1`) | TF-IDF + logistic regression; LLM labeling | No labels yet; explainable; paid APIs and LLMs are out of scope |
+| Keyword rules with evidence (`rules_v1`, then `rules_v2`) | TF-IDF + logistic regression; LLM labeling | No labels yet; explainable; paid APIs and LLMs are out of scope |
 | Plain "lag" → `match_server`; "input lag" → `performance` | Leave "lag" unlabeled | These are online shooters; checked against hand labels and revisable |
 | `review_labels` partitioned by `label_version` | One folder per run | Versions sit side by side; a rerun replaces only its own version |
 | Split by target week, purge 7 days | Split by row date | Prevents target windows crossing splits (plan §7) |
@@ -96,10 +96,10 @@ All modules follow the repository's pattern: a docstring with usage at the top, 
 | Input | `data/staging/reviews_clean` (`review_id`, `text_normalized`, `language`, `voted_up`) |
 | Output | `data/staging/review_labels/label_version=<v>/` and `label_coverage_<v>.csv` |
 | Key functions | `RULES` (ordered `(rule_id, pattern, negatable)` per category), `negation_pattern()`, `match_category()`, `label_reviews()`, `coverage()` |
-| Command | `make labels [LABEL_VERSION=rules_v1] [APPS="..."]`; also run by `make pipeline LABEL_VERSION=...` |
-| Tests | `tests/test_labels.py`: 22 example sentences, schema, rule IDs, B→A handoff into `daily_category`, review_labels checks, coverage |
+| Command | `make labels [LABEL_VERSION=rules_v2] [APPS="..."]`; also run by `make pipeline LABEL_VERSION=...` |
+| Tests | `tests/test_labels.py`: 27 example sentences, schema, rule IDs, B→A handoff into `daily_category`, review_labels checks, coverage |
 
-Rules (rules_v1):
+Rules (rules_v2):
 
 | Category | Rule IDs (match order) | Negatable |
 |---|---|---|
@@ -109,6 +109,13 @@ Rules (rules_v1):
 | `monetization` | `money_mtx`, `money_p2w`, `money_greed`, `money_price`, `money_store` | `money_mtx`, `money_p2w`, `money_store` |
 
 The first matching rule gives `rule_id`; the matched text (up to 120 characters) is the `evidence`. Any rule change requires bumping `LABEL_VERSION` in `config.py`.
+
+Rule versions:
+
+| Version | Change | Evidence |
+|---|---|---|
+| `rules_v1` | First keyword rules | Unit examples only |
+| `rules_v2` | `perf_fps` no longer matches "fps" on its own. It needs a frame-rate context: a number ("40fps"), "fps drops", "low fps", "my fps", or "frame rate" | Spot check on the real English negatives: in many reviews "fps" names the genre (first-person shooter). The stricter rule removed 463 of 865 matches; most removed matches in a random sample were genre uses |
 
 ### 4.2 `pipeline/label_eval.py` — rules vs hand labels
 
@@ -162,7 +169,7 @@ MLflow layout: one parent run per training (versions, splits, grid, commit; vali
 
 | File | Change | Reviewer |
 |---|---|---|
-| `pipeline/config.py` | `LABEL_VERSION = "rules_v1"`, `VAL_END = "2023-08-15"`, `MODEL_VERSION = "gbt_v1"` | A |
+| `pipeline/config.py` | `LABEL_VERSION = "rules_v2"`, `VAL_END = "2023-08-15"`, `MODEL_VERSION = "gbt_v1"` | A |
 | `pipeline/checks.py` | Checks for `review_labels` (categories, evidence, only English negatives), `model_predictions` (incl. no prediction before `training_label_end`) and the model bundle (format, feature order, versions match `feature_manifest.json`, model folders present, predictions from this model); publishes `model/` and B's CSV/markdown outputs | A |
 | `pipeline/run.py` | `--label-version` without `--labels` runs `labels` before `daily` and logs it to the scale log | A |
 | `Makefile`, `README.md` | `labels`, `label-eval`, `alerts`, `train`, `mlflow-ui`; README sections for labels and the model | A |
@@ -238,9 +245,9 @@ make setup && make test
 make download && make clean-reviews
 # ...or copy A's data/staging/reviews_clean (~0.1 GB) into data/staging/.
 
-make pipeline LABEL_VERSION=rules_v1            # labels -> daily -> features -> baselines -> checks
-make alerts LABEL_VERSION=rules_v1
-make train LABEL_VERSION=rules_v1               # validation only
+make pipeline LABEL_VERSION=rules_v2            # labels -> daily -> features -> baselines -> checks
+make alerts LABEL_VERSION=rules_v2
+make train LABEL_VERSION=rules_v2               # validation only
 make publish                                    # checks, then data/published/
 STEAMPULSE_DATA_DIR=data/published ...          # C's API (application/README.md)
 
@@ -288,7 +295,7 @@ Every output is tied to `snapshot_id`, `cohort_version`, `label_version`, `featu
 
 | Test file | Tests | Covers |
 |---|---|---|
-| `tests/test_labels.py` | 29 | rules, negation, schema, coverage, handoff to `aggregate`, label checks |
+| `tests/test_labels.py` | 34 | rules, negation, schema, coverage, handoff to `aggregate`, label checks |
 | `tests/test_label_eval.py` | 6 | reading hand labels, metrics, kappa, error lists |
 | `tests/test_train.py` | 11 | splits, bundle, scores, exclusions, card, checks, parity, MLflow, C's API (skips without `application/`) |
 | `tests/test_alerts.py` | 4 | consistency with `observed_status`, measures, grid |
