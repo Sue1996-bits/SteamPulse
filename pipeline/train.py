@@ -1,21 +1,35 @@
 """Train and evaluate the seven-day share forecast: one Spark GBT model per category.
 
-    python -m pipeline.train --label-version rules_v2               # search, refit, export
+    python -m pipeline.train --label-version rules_v2               # search, refit, export (gbt_v2)
     python -m pipeline.train --label-version rules_v2 --score-test  # also score the test period (once, at the end)
+    python -m pipeline.train --target level --out-dir data/staging/compare_gbt_v1   # gbt_v1, for comparison
+
+Two targets:
+
+  residual (gbt_v2, deployed)  prediction = share_28d + shrinkage x GBT(target_share_next7 - share_28d).
+                               The rolling 28-day share supplies the level and the trees learn only
+                               a correction, so the model follows level shifts that never occurred in
+                               training (trees can't extrapolate) and falls back to the baseline when
+                               it learns nothing. shrinkage is chosen on validation from SHRINKAGE;
+                               0 is left out so that a learned component is always deployed.
+  level (gbt_v1)               prediction = GBT(target_share_next7), kept for comparison.
 
 Splits are in pipeline/splits.py (by target week, with a purged week at each
 boundary). Only eligible rows with a target are fitted or scored. Per category,
 pooled across games:
 
-  1. Fit each GRID setting on train and score MAE on validation.
+  1. Fit each GRID setting (and, for residual, each shrinkage) on train and score
+     MAE on validation.
   2. Compare the best setting with persistence (share_7d) and rolling-28
      (share_28d) on exactly the same validation rows.
   3. Refit the best setting on every row with t + 7 <= VAL_END. That model is the
      one deployed; the last target day it saw is its training_label_end.
 
 Each saved model is a Spark PipelineModel: Imputer (median, fitted on the model's
-own training rows) -> VectorAssembler -> GBTRegressor. It reads the raw
-FEATURE_COLS, in feature_manifest order, and writes `prediction`. Predictions are
+own training rows) -> VectorAssembler -> GBTRegressor, plus for residual a
+SQLTransformer that adds the correction to share_28d. It reads the raw
+FEATURE_COLS, in feature_manifest order, and writes `prediction`, so serving is
+the same for both targets. Predictions are
 clipped to [0, 1] wherever they are scored or published, for every method.
 
 Writes to data/staging/:
@@ -43,7 +57,7 @@ from pathlib import Path
 import mlflow
 import pandas as pd
 from pyspark.ml import Pipeline, PipelineModel
-from pyspark.ml.feature import Imputer, VectorAssembler
+from pyspark.ml.feature import Imputer, SQLTransformer, VectorAssembler
 from pyspark.ml.regression import GBTRegressor
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
@@ -73,18 +87,40 @@ PARITY_TOLERANCE = 1e-9  # offline vs API prediction, same row and model
 TOP_ERRORS = 10
 # Small on purpose: ~850 training rows per category. Tune here, on validation only.
 GRID = [{"maxDepth": d, "maxIter": n, "stepSize": 0.1} for d in (2, 3, 4) for n in (20, 50)]
+TARGETS = {"residual": config.MODEL_VERSION, "level": "gbt_v1"}  # target -> model_version
+TARGET_FORMULAS = {"residual": "share_28d + shrinkage * GBT(target_share_next7 - share_28d)",
+                   "level": "GBT(target_share_next7)"}
+SHRINKAGE = [0.25, 0.5, 1.0]  # weight on the learned correction; 0 would deploy the baseline itself
+RESIDUAL_COL = "residual_target"
+RESIDUAL_PRED = "residual_prediction"
+BASE_FILLED = "share_28d__filled"
 
 
 # ---- model --------------------------------------------------------------------
 
-def build_pipeline(params: dict, seed: int = SEED) -> Pipeline:
+def build_pipeline(params: dict, seed: int = SEED, target: str = "residual") -> Pipeline:
+    """The fitted part. For residual, finalize() adds the step that turns the correction into a share."""
     filled = [f"{c}__filled" for c in config.FEATURE_COLS]
+    label, pred = (RESIDUAL_COL, RESIDUAL_PRED) if target == "residual" else (config.LABEL_COL, "prediction")
     return Pipeline(stages=[
         Imputer(inputCols=config.FEATURE_COLS, outputCols=filled, strategy="median"),
         VectorAssembler(inputCols=filled, outputCol="features"),
-        GBTRegressor(featuresCol="features", labelCol=config.LABEL_COL, predictionCol="prediction",
-                     seed=seed, **params),
+        GBTRegressor(featuresCol="features", labelCol=label, predictionCol=pred, seed=seed, **params),
     ])
+
+
+def add_back(shrinkage: float) -> SQLTransformer:
+    return SQLTransformer(
+        statement=f"SELECT *, {BASE_FILLED} + {shrinkage!r} * {RESIDUAL_PRED} AS prediction FROM __THIS__")
+
+
+def finalize(fitted: PipelineModel, target: str, shrinkage: float | None) -> PipelineModel:
+    """The servable model: reads raw features, writes `prediction`."""
+    return PipelineModel(stages=[*fitted.stages, add_back(shrinkage)]) if target == "residual" else fitted
+
+
+def with_residual(df: DataFrame) -> DataFrame:
+    return df.withColumn(RESIDUAL_COL, F.col(config.LABEL_COL) - F.col("share_28d"))
 
 
 def clip(c: Column) -> Column:
@@ -211,7 +247,16 @@ def model_card(m: dict, scores: pd.DataFrame, counts: pd.DataFrame, importance: 
             t["winner"] = t.category.map(m["validation_winner"]).fillna("")
         return _md_table(t)
 
-    params = pd.DataFrame([{"category": c, **v["params"], "fit_rows": v["fit_rows"]} for c, v in m["categories"].items()])
+    params = pd.DataFrame([{"category": c, **v["params"], "shrinkage": v.get("shrinkage"), "fit_rows": v["fit_rows"]}
+                           for c, v in m["categories"].items()])
+    if params.shrinkage.isna().all():
+        params = params.drop(columns="shrinkage")
+    residual = m.get("target", "").startswith("share_28d")
+    how = ("A Spark GBT regressor per category learns the correction to the rolling 28-day share "
+           "(`target_share_next7 - share_28d`); the prediction is `share_28d + shrinkage x correction`, with the "
+           "shrinkage chosen on validation. The baseline supplies the level, so the model can follow level shifts "
+           "that never occurred in training, and it falls back to the baseline when it learns nothing."
+           if residual else "One Spark GBT regressor per category predicts the share directly.")
     first = counts[counts.category == config.CATEGORIES[0]].drop(columns="category")
     top = (importance.sort_values("importance", ascending=False).groupby("category").head(5)
            .groupby("category").apply(lambda g: ", ".join(f"{f} ({v:.2f})" for f, v in zip(g.feature, g.importance)),
@@ -224,7 +269,7 @@ Generated by `pipeline/train.py` at {m['created_at']} (MLflow run `{m['mlflow_ru
 
 ## What it predicts
 
-For one game, one complaint category and an as-of date t: the share of English negative reviews over the next seven days (t+1..t+7) that fall in that category. One Spark GBT regressor per category, trained on all games pooled, on the 19 features in `feature_manifest.json`. Output is clipped to [0, 1].
+For one game, one complaint category and an as-of date t: the share of English negative reviews over the next seven days (t+1..t+7) that fall in that category. {how} Models are trained on all games pooled, on the {len(m['features'])} features in `feature_manifest.json`. Output is clipped to [0, 1].
 
 ## Intended use
 
@@ -277,16 +322,22 @@ Per-game results and volume-weighted MAE are in `model_scores.csv`; the largest 
 
 # ---- run ----------------------------------------------------------------------
 
+def gbt_stage(model: PipelineModel):
+    return next(st for st in model.stages if hasattr(st, "featureImportances"))
+
+
 def run(feats: DataFrame, label_version: str, out_dir: Path = STAGING, grid: list[dict] = GRID,
-        score_test: bool = False, tracking_uri: str | None = None,
-        model_version: str = config.MODEL_VERSION, seed: int = SEED) -> dict:
+        score_test: bool = False, tracking_uri: str | None = None, target: str = "residual",
+        shrinkage: list[float] = SHRINKAGE, seed: int = SEED) -> dict:
     """Search, compare, refit and export. Returns the model manifest."""
+    model_version = TARGETS[target]
+    lambdas = shrinkage if target == "residual" else [None]
     mlflow.set_tracking_uri(tracking_uri or MLRUNS.as_uri())
     mlflow.set_experiment(EXPERIMENT)
     feature_types = {f.name: f.dataType.simpleString() for f in feats.schema.fields if f.name in config.FEATURE_COLS}
     # A few thousand rows: a handful of partitions avoids 200-way shuffles on every fit.
     feats = feats.withColumn("split", split_col()).coalesce(4).cache()
-    data = feats.where(usable()).cache()
+    data = with_residual(feats.where(usable())).cache()
     fit_end = F.date_add("as_of_date", 7) <= F.lit(config.VAL_END).cast("date")
 
     model_dir = out_dir / "model"
@@ -302,6 +353,7 @@ def run(feats: DataFrame, label_version: str, out_dir: Path = STAGING, grid: lis
             "train_end": config.TRAIN_END, "val_end": config.VAL_END, "seed": seed,
             "games": ",".join(sorted(r.app_id for r in data.select("app_id").distinct().collect())),
             "grid": json.dumps(grid), "code_commit": (_code_revision().get("commit") or "")[:12],
+            "target": target, "shrinkage": json.dumps(lambdas),
         })
         for category in config.CATEGORIES:
             rows = data.where(F.col("category") == category)
@@ -309,15 +361,21 @@ def run(feats: DataFrame, label_version: str, out_dir: Path = STAGING, grid: lis
             if train.limit(1).count() == 0 or val.limit(1).count() == 0:
                 raise SystemExit(f"{category}: no eligible train or validation rows with a target.")
 
-            search = []
+            search = []  # (validation MAE, GBT params, shrinkage, fitted model)
             for params in grid:
                 with mlflow.start_run(run_name=f"{category} {params}", nested=True):
-                    model = build_pipeline(params, seed).fit(train)
-                    mae, n = mae_pp(model.transform(val), F.col("prediction"))
+                    fitted = build_pipeline(params, seed, target).fit(train)
+                    scored = fitted.transform(val).cache()
+                    metrics = {}
+                    for lam in lambdas:
+                        pred = F.col("prediction") if lam is None else F.col(BASE_FILLED) + lam * F.col(RESIDUAL_PRED)
+                        mae, n = mae_pp(scored, pred)
+                        metrics["val_mae_pp" if lam is None else f"val_mae_pp_shrinkage_{lam}"] = mae
+                        search.append((mae, params, lam, fitted))
                     mlflow.log_params({"category": category, **params})
-                    mlflow.log_metrics({"val_mae_pp": mae, "val_rows": n})
-                search.append((mae, params, model))
-            _, best, train_model = min(search, key=lambda s: s[0])
+                    mlflow.log_metrics({**metrics, "val_rows": n})
+            _, best, best_lam, fitted = min(search, key=lambda s: s[0])
+            train_model = finalize(fitted, target, best_lam)
 
             scores += score(train_model.transform(train), model_version, "train", category)  # in-sample
             val_scored = train_model.transform(val).cache()
@@ -325,7 +383,7 @@ def run(feats: DataFrame, label_version: str, out_dir: Path = STAGING, grid: lis
             errors.append(largest_errors(val_scored, model_version, "validation"))
 
             fit_rows = rows.where(fit_end)
-            final = build_pipeline(best, seed).fit(fit_rows)
+            final = finalize(build_pipeline(best, seed, target).fit(fit_rows), target, best_lam)
             label_end = fit_rows.select(F.date_add(F.max("as_of_date"), 7)).first()[0].isoformat()
             label_ends.append(label_end)
             if score_test:
@@ -336,11 +394,11 @@ def run(feats: DataFrame, label_version: str, out_dir: Path = STAGING, grid: lis
             final.write().overwrite().save(str(model_dir / category))
             models[category] = final
             importance += [dict(category=category, feature=f, importance=float(v))
-                           for f, v in zip(config.FEATURE_COLS, final.stages[-1].featureImportances.toArray())]
+                           for f, v in zip(config.FEATURE_COLS, gbt_stage(final).featureImportances.toArray())]
             val_scores = {s["method"]: s["mae_pp"] for s in scores
                           if s["split"] == "validation" and s["category"] == category and s["app_id"] == "all"}
             categories[category] = {
-                "path": f"model/{category}", "params": best, "fit_rows": fit_rows.count(),
+                "path": f"model/{category}", "params": best, "shrinkage": best_lam, "fit_rows": fit_rows.count(),
                 "training_label_end": label_end, "val_mae_pp": val_scores,
                 "validation_winner": min(val_scores, key=val_scores.get),
             }
@@ -362,6 +420,7 @@ def run(feats: DataFrame, label_version: str, out_dir: Path = STAGING, grid: lis
         manifest = {
             "format": "spark_pipeline",
             "model_version": model_version,
+            "target": TARGET_FORMULAS[target],
             "training_label_end": training_label_end,
             "replay_start": training_label_end,
             "feature_version": config.FEATURE_VERSION,
@@ -405,7 +464,7 @@ def run(feats: DataFrame, label_version: str, out_dir: Path = STAGING, grid: lis
     return manifest
 
 
-def main(label_version: str, score_test: bool) -> None:
+def main(label_version: str, score_test: bool, target: str = "residual", out_dir: Path = STAGING) -> None:
     spark = get_spark("steampulse-train")
     feats = spark.read.parquet(str(FEATURES_DIR)).where(
         (F.col("label_version") == label_version) & (F.col("feature_version") == config.FEATURE_VERSION))
@@ -416,9 +475,9 @@ def main(label_version: str, score_test: bool) -> None:
     fm = json.loads(FEATURE_MANIFEST.read_text())
     if [f["name"] for f in fm["features"]] != config.FEATURE_COLS or fm["label_version"] != label_version:
         raise SystemExit("feature_manifest.json doesn't match FEATURE_COLS or this label_version. Rerun `make features`.")
-    manifest = run(feats, label_version, score_test=score_test)
+    manifest = run(feats, label_version, out_dir=out_dir, score_test=score_test, target=target)
 
-    scores = pd.read_csv(SCORES_PATH)
+    scores = pd.read_csv(out_dir / SCORES_PATH.name)
     shown = scores[scores.split.isin(["validation", "test"]) & (scores.app_id == "all")]
     table = shown.pivot_table(index=["split", "category"], columns="method", values="mae_pp", sort=False)
     with pd.option_context("display.width", 200, "display.float_format", "{:.2f}".format):
@@ -427,8 +486,10 @@ def main(label_version: str, score_test: bool) -> None:
     print(f"\nValidation winner: {manifest['validation_winner']}")
     print(f"Deployed {manifest['model_version']} trained on targets through {manifest['training_label_end']}; "
           f"MLflow run {manifest['mlflow_run_id']}")
-    print(f"Wrote {MODEL_DIR.relative_to(config.ROOT)}/, {PREDICTIONS_DIR.name}/ and "
-          + ", ".join(f.name for f in OUTPUT_FILES))
+    print(f"Shrinkage per category: { {c: v['shrinkage'] for c, v in manifest['categories'].items()} }")
+    print(f"Wrote {out_dir}/: model/, {PREDICTIONS_DIR.name}/ and " + ", ".join(f.name for f in OUTPUT_FILES))
+    if out_dir != STAGING:
+        print("This output is outside data/staging, so checks and publish won't pick it up (comparison only).")
     if not score_test:
         print("Test period not scored. Run with --score-test once, after every choice is frozen.")
 
@@ -437,5 +498,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--label-version", default=config.LABEL_VERSION)
     parser.add_argument("--score-test", action="store_true", help="score the held-out test period (do this once)")
+    parser.add_argument("--target", choices=list(TARGETS), default="residual",
+                        help="residual = gbt_v2 (deployed), level = gbt_v1 (comparison)")
+    parser.add_argument("--out-dir", type=Path, default=STAGING,
+                        help="where to write; use another folder for comparison runs")
     args = parser.parse_args()
-    main(args.label_version, args.score_test)
+    main(args.label_version, args.score_test, args.target, args.out_dir.resolve())

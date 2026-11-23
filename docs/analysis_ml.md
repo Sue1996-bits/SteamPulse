@@ -34,7 +34,9 @@ The work went in the order of the data, and every step was checked against the n
 
 **2.5 Splits by target week.** A forecast at t uses days ≤ t and is scored on t+1..t+7, so a row belongs to the split containing its whole target week. The week before each boundary is purged. One shared function (`splits.py`) is used by training and alerts.
 
-**2.6 A small, honest model.** One GBT regressor per category, pooled across games, because about 855 training rows per category can't support per-game models. A six-setting grid is searched on validation, the winner is compared with both baselines on identical rows, then refit on train + validation. The trained model is deployed even if a baseline wins validation (the plan requires genuine model deployment); `validation_winner` records which method won.
+**2.6 A small, honest model.** One GBT regressor per category, pooled across games, because about 855 training rows per category can't support per-game models. A small grid is searched on validation, the winner is compared with both baselines on identical rows, then refit on train + validation. The trained model is deployed even if a baseline wins validation (the plan requires genuine model deployment); `validation_winner` records which method won.
+
+The first version (`gbt_v1`) predicted the share directly, and on validation it lost to the rolling 28-day baseline in every category. Two reasons showed up in the per-game scores. Trees can't extrapolate: Destiny 2's monetization share rose in the validation period far above anything seen in training, and a tree can only predict values within the range it was trained on. And approximating the near-linear link between the next week's share and the recent shares with a few splits adds error of its own. The current version (`gbt_v2`) therefore learns only the correction to the rolling 28-day share: `prediction = share_28d + shrinkage × GBT(target_share_next7 − share_28d)`. The baseline supplies the level, the trees model the deviation, and when the trees learn nothing the prediction falls back to the baseline. The shrinkage is chosen on validation from {0.25, 0.5, 1}; 0 is left out so a learned component is always deployed. `--target level` still trains `gbt_v1`, so both can be scored on the same test rows.
 
 **2.7 Package for serving.** The imputer goes inside each saved pipeline, so C never re-implements a transform. The manifest carries versions, feature order and types, the cutoff, and a parity file with a declared tolerance. Predictions are published only for dates on or after `training_label_end`, the same rule C's API enforces with a 503.
 
@@ -50,6 +52,7 @@ The work went in the order of the data, and every step was checked against the n
 | Split by target week, purge 7 days | Split by row date | Prevents target windows crossing splits (plan §7) |
 | `VAL_END = 2023-08-15` | 2023-08-31 | Gives about 55/22/23% of eligible origins, close to the planned 60/20/20 |
 | GBT per category, pooled across games | Per-game models; one multi-output model | Enough rows per model; one model per category is what the API loads |
+| Learn the correction to `share_28d` (`gbt_v2`) | Predict the share directly (`gbt_v1`) | Trees can't follow a level never seen in training; the correction keeps the baseline's level and falls back to it. `gbt_v1` stays reproducible for comparison |
 | Refit on train + validation for deployment | Deploy the train-only model | Uses all labeled history before test; test stays untouched |
 | Model predictions only from `training_label_end` | Predict every date | A replay must not use a model trained on its own future |
 | Test scored only with `--score-test` | Always score | Makes "look at test once" a deliberate step |
@@ -158,9 +161,9 @@ The first origin is 2022-12-05 because 35 days of history are needed. With five 
 |---|---|
 | Purpose | Fit, select, compare, refit, export and log the seven-day share model |
 | Input | `forecast_features` and `feature_manifest.json` for one `label_version` |
-| Model | Per category: `Imputer(median)` → `VectorAssembler` → `GBTRegressor`; grid `maxDepth` {2, 3, 4} × `maxIter` {20, 50}, `stepSize` 0.1, seed 226 |
+| Model | Per category: `Imputer(median)` → `VectorAssembler` → `GBTRegressor` on `target_share_next7 − share_28d` → `SQLTransformer` writing `prediction = share_28d + shrinkage × correction`. Grid `maxDepth` {2, 3, 4} × `maxIter` {20, 50} × shrinkage {0.25, 0.5, 1}, `stepSize` 0.1, seed 226. `--target level` trains `gbt_v1` (direct share) for comparison |
 | Output | `model/<category>/`, `model_manifest.json`, `model_predictions/`, `model_parity.csv`, `model_scores.csv`, `model_row_counts.csv`, `model_errors.csv`, `model_feature_importance.csv`, `model_card.md`; MLflow run in `mlruns/` |
-| Command | `make train [LABEL_VERSION=...] [TEST=1]`, `make mlflow-ui` |
+| Command | `make train [LABEL_VERSION=...] [TEST=1]`, `make mlflow-ui`; comparison: `python -m pipeline.train --target level --out-dir data/staging/compare_gbt_v1` |
 | Tests | `tests/test_train.py`: split boundaries, no crossing target weeks, manifest = API contract, identical scoring rows, exclusions add up, errors and card, cutoff-safe predictions, bundle checks, parity, MLflow runs, C's API end to end |
 
 MLflow layout: one parent run per training (versions, splits, grid, commit; validation MAE per category and method; macro MAE; all output files and the models as artifacts), and one nested run per category × grid setting (`val_mae_pp`).
@@ -169,7 +172,7 @@ MLflow layout: one parent run per training (versions, splits, grid, commit; vali
 
 | File | Change | Reviewer |
 |---|---|---|
-| `pipeline/config.py` | `LABEL_VERSION = "rules_v2"`, `VAL_END = "2023-08-15"`, `MODEL_VERSION = "gbt_v1"` | A |
+| `pipeline/config.py` | `LABEL_VERSION = "rules_v2"`, `VAL_END = "2023-08-15"`, `MODEL_VERSION = "gbt_v2"` | A |
 | `pipeline/checks.py` | Checks for `review_labels` (categories, evidence, only English negatives), `model_predictions` (incl. no prediction before `training_label_end`) and the model bundle (format, feature order, versions match `feature_manifest.json`, model folders present, predictions from this model); publishes `model/` and B's CSV/markdown outputs | A |
 | `pipeline/run.py` | `--label-version` without `--labels` runs `labels` before `daily` and logs it to the scale log | A |
 | `Makefile`, `README.md` | `labels`, `label-eval`, `alerts`, `train`, `mlflow-ui`; README sections for labels and the model | A |
@@ -192,12 +195,13 @@ Directory layout inside a publication: `model_manifest.json` at the root, models
 | Field | Meaning | Checked by |
 |---|---|---|
 | `format` | `"spark_pipeline"` | C `Publication`, `checks` |
-| `model_version` | `gbt_v1`; also `method_version` of model rows | C response |
+| `model_version` | `gbt_v2`; also `method_version` of model rows | C response |
+| `target` | the formula the model implements (`share_28d + shrinkage * GBT(target_share_next7 - share_28d)`) | report |
 | `training_label_end`, `replay_start` | last target day seen by the deployed model; first allowed replay date | C returns 503 before it; `checks` on predictions |
 | `feature_version`, `label_version`, `snapshot_id` | must equal `feature_manifest.json` | C `Publication`, `checks` |
 | `features`, `feature_types` | ordered names and Spark types | C builds the input row from them |
 | `prediction_column`, `prediction_clip` | `prediction`, [0, 1] | C clips |
-| `categories.<c>` | `path`, chosen `params`, `fit_rows`, `val_mae_pp` per method, `validation_winner` | C loads `path` |
+| `categories.<c>` | `path`, chosen `params` and `shrinkage`, `fit_rows`, `val_mae_pp` per method, `validation_winner` | C loads `path` |
 | `validation_winner` | best method per category on validation | C may enable `best_validation` |
 | `parity` | `model_parity.csv` and tolerance 1e-9 | C's parity check |
 | `seed`, `mlflow_run_id`, `code`, `cohort_*`, `splits`, `created_at` | reproducibility | report |
@@ -260,6 +264,7 @@ python -m pipeline.label_eval export data/samples/label_gold_226.csv
 # Once, at the end, after every choice is frozen
 make label-eval GOLD=data/samples/label_gold_226.csv PERIOD=later
 make alerts TEST=1 && make train TEST=1
+python -m pipeline.train --target level --score-test --out-dir data/staging/compare_gbt_v1   # gbt_v1 on the same rows
 ```
 
 Every output is tied to `snapshot_id`, `cohort_version`, `label_version`, `feature_version`, `model_version`, the git commit and the MLflow run ID. Reruns with the same versions replace their partitions instead of appending.
@@ -297,7 +302,7 @@ Every output is tied to `snapshot_id`, `cohort_version`, `label_version`, `featu
 |---|---|---|
 | `tests/test_labels.py` | 34 | rules, negation, schema, coverage, handoff to `aggregate`, label checks |
 | `tests/test_label_eval.py` | 6 | reading hand labels, metrics, kappa, error lists |
-| `tests/test_train.py` | 11 | splits, bundle, scores, exclusions, card, checks, parity, MLflow, C's API (skips without `application/`) |
+| `tests/test_train.py` | 13 | splits, bundle, scores, exclusions, card, checks, parity, residual add-back, `gbt_v1` reproduction, MLflow, C's API (skips without `application/`) |
 | `tests/test_alerts.py` | 4 | consistency with `observed_status`, measures, grid |
 
 The full suite (A's tests included) passes. Beyond the unit tests, a synthetic year (two games, about 65,000 reviews) was run through every command (labels → aggregate → features → baselines → alerts → train → checks → publish), all checks passed, and C's API served the bundle: health reported the model, all three methods responded, dates before the cutoff returned 503, evidence excerpts were returned, and API predictions matched `model_parity.csv` exactly. Synthetic numbers are not results and aren't reported.
