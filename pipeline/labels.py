@@ -49,7 +49,14 @@ RULES: dict[str, list[tuple[str, str, bool]]] = {
          False),
     ],
     "performance": [
-        ("perf_fps", r"\bfps\b|\bframe ?rates?\b|\bframes? per second\b|\bframe ?drops?\b|\bdropped frames\b", True),
+        # "fps" alone is often the genre (first-person shooter), so it needs a frame-rate context.
+        ("perf_fps", r"\b\d+ ?fps\b"
+                     r"|\bfps ?(drops?|dips?|dropping|dropped|issues?|problems?|tanks?|tanking|spikes?|loss|lag"
+                     r"|stutter\w*|counter|cap(ped)?|goes|went|keeps|falls?|fell)\b"
+                     r"|\bfps is (so |really |very )?(bad|low|terrible|horrible|awful|unstable|trash|garbage|shit)\b"
+                     r"|\b(low|bad|terrible|horrible|awful|poor|unstable|inconsistent|choppy|lower|less|lose|losing"
+                     r"|lost|tanking|drops?|dropping|dips?|max|stable|decent|high|my) fps\b"
+                     r"|\bframe ?rates?\b|\bframes? per second\b|\bframe ?drops?\b|\bdropped frames\b", True),
         ("perf_stutter", r"\b(micro ?)?stutter(s|ing|y)?\b|\binput lag\b", True),
         ("perf_optimization", r"\bun-?optimi[sz]ed\b|\boptimi[sz](ation|ed)\b", False),
         ("perf_bad", r"\b(bad|poor|terrible|horrible|awful|worse|worst|garbage|trash|abysmal) performance\b"
