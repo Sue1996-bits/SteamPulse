@@ -34,7 +34,8 @@ TABLES = {
 }
 EXTRA_FILES = ["feature_manifest.json", "clean_summary.json", "baseline_scores.csv",
                "model_manifest.json", "model_parity.csv", "model_scores.csv", "model_row_counts.csv",
-               "model_errors.csv", "model_feature_importance.csv", "model_card.md"]
+               "model_errors.csv", "model_feature_importance.csv", "model_card.md",
+               "alert_summary.csv", "alert_sensitivity.csv"]
 EXTRA_DIRS = ["model"]  # saved Spark models, loaded by the API through model_manifest.json
 
 
