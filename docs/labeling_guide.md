@@ -27,7 +27,7 @@ make label-sample APPS="1172470 1517290 1811260 1085660 359550"
 
 Each annotator works on their own copy, named `label_sample_226_<name>.csv`. The file holds review text, so share it outside Git (it lives under the ignored `data/` folder).
 
-- Put `1` in each category column that applies. Leave the others empty (or `0`).
+- Put `1` in each category column that applies and `0` in the others. A row counts as labeled only when all four cells are filled, so leave all four empty for rows that aren't yours.
 - Write anything unclear in `notes`, starting with `?` (for example `? "lag" with no context`). Still give your best label.
 - Don't read the `period` column while labeling, and don't look up what the rules output.
 
