@@ -85,7 +85,7 @@ def main(labels_path: Path | None, label_version: str | None) -> None:
     spark = get_spark("steampulse-aggregate")
     clean = spark.read.parquet(str(CLEAN_DIR))
     neg = daily_negative(clean).cache()
-    neg.write.mode("overwrite").partitionBy("app_id").parquet(str(DAILY_NEGATIVE_DIR))
+    neg.repartition("app_id").write.mode("overwrite").partitionBy("app_id").parquet(str(DAILY_NEGATIVE_DIR))
     summary = neg.groupBy("app_id", "coverage_status").count().orderBy("app_id").collect()
     print("daily_negative:", ", ".join(f"{r.app_id} {r.coverage_status} {r['count']}" for r in summary))
 
@@ -93,7 +93,7 @@ def main(labels_path: Path | None, label_version: str | None) -> None:
         print("No --labels given, so daily_category was not built.")
         return
     cat = daily_category(clean, read_labels(spark, labels_path), neg, label_version)
-    cat.write.mode("overwrite").partitionBy("app_id").parquet(str(DAILY_CATEGORY_DIR))
+    cat.repartition("app_id").write.mode("overwrite").partitionBy("app_id").parquet(str(DAILY_CATEGORY_DIR))
     print(f"daily_category ({label_version}) -> {DAILY_CATEGORY_DIR.relative_to(config.ROOT)}")
 
 

@@ -3,7 +3,7 @@ JAVA_MAJOR := $(shell java -version 2>&1 | awk -F'"' '/version/ {print $$2}' | c
 
 FILES ?= 2
 
-.PHONY: help check-java setup lock test download-sample download profile select-games clean-reviews label-sample daily manifest clean-cache
+.PHONY: help check-java setup lock test download-sample download profile select-games clean-reviews label-sample labels daily features baselines checks publish pipeline manifest clean-cache
 
 help:  ## Show available commands
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -41,8 +41,26 @@ clean-reviews: check-java  ## Build reviews_clean for the chosen games (APPS="11
 label-sample: check-java  ## Draw the hand-labeling sample (300 train + 150 later) -> data/samples/
 	uv run python -m pipeline.label_sample $(if $(APPS),--apps $(APPS)) $(if $(SEED),--seed $(SEED))
 
+labels: check-java  ## Rule labels for English negatives -> data/staging/review_labels/ (LABEL_VERSION=v, default in config)
+	uv run python -m pipeline.labels $(if $(LABEL_VERSION),--label-version $(LABEL_VERSION)) $(if $(APPS),--apps $(APPS))
+
 daily: check-java  ## Build daily_negative (and daily_category with LABELS=path LABEL_VERSION=v)
 	uv run python -m pipeline.aggregate $(if $(LABELS),--labels $(LABELS) --label-version $(LABEL_VERSION))
+
+features: check-java  ## Build forecast_features + feature_manifest.json (LABEL_VERSION=v required)
+	uv run python -m pipeline.features --label-version $(LABEL_VERSION)
+
+baselines: check-java  ## Persistence and rolling-28 forecast_results + baseline_scores.csv
+	uv run python -m pipeline.baselines
+
+checks: check-java  ## Run quality checks on data/staging/ -> check_report.json
+	uv run python -m pipeline.checks
+
+publish: check-java  ## Run checks, then copy staging to data/published/ with manifest.json
+	uv run python -m pipeline.checks --publish
+
+pipeline: check-java  ## Run every step in order (LABEL_VERSION=v [LABELS=path], PUBLISH=1, LOG=1 for the scale log)
+	uv run python -m pipeline.run $(if $(LABELS),--labels $(LABELS)) $(if $(LABEL_VERSION),--label-version $(LABEL_VERSION)) $(if $(PUBLISH),--publish) $(if $(LOG),--log)
 
 manifest:  ## Write data/published/manifest.json for the published outputs
 	uv run python -m pipeline.manifest
