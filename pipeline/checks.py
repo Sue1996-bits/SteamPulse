@@ -25,6 +25,7 @@ from pipeline.config import get_spark
 REPORT_PATH = config.STAGING_DIR / "check_report.json"
 TABLES = {
     "reviews_clean": (config.REVIEWS_CLEAN_COLS, config.REVIEWS_CLEAN_KEY),
+    "review_labels": (config.REVIEW_LABELS_COLS, config.REVIEW_LABELS_KEY),
     "daily_negative": (config.DAILY_NEGATIVE_COLS, config.DAILY_NEGATIVE_KEY),
     "daily_category": (config.DAILY_CATEGORY_COLS, config.DAILY_CATEGORY_KEY),
     "forecast_features": (config.FORECAST_FEATURES_COLS, config.FORECAST_FEATURES_KEY),
@@ -93,6 +94,23 @@ def check_reviews_clean(df: DataFrame) -> list[Check]:
         count_check(t, "strict_cohort", _bad(df, F.col("created_at") != F.col("updated_at")), "edited reviews"),
         count_check(t, "has_text", _bad(df, F.trim("text_raw") == ""), "empty reviews"),
     ]
+
+
+def check_labels(labels: DataFrame, clean: DataFrame | None) -> list[Check]:
+    t = "review_labels"
+    out = [
+        allowed(labels, t, "category", config.CATEGORIES),
+        count_check(t, "is_match_true", _bad(labels, ~F.col("is_match") | F.col("is_match").isNull()),
+                    "rows with is_match not true (absence of a row means no label)"),
+        count_check(t, "has_evidence", _bad(labels, F.col("rule_id").isNull() | (F.col("evidence") == "")),
+                    "rows without a rule_id or evidence"),
+    ]
+    if clean is not None:
+        en_neg = clean.where((F.col("language") == config.LANGUAGE) & ~F.col("voted_up")).select("review_id")
+        stray = labels.select("review_id").distinct().join(en_neg, "review_id", "left_anti").count()
+        out.append(count_check(t, "on_english_negatives", stray,
+                               "labeled review_ids that aren't English negatives in reviews_clean"))
+    return out
 
 
 def check_daily(neg: DataFrame, cat: DataFrame | None) -> list[Check]:
@@ -192,6 +210,8 @@ def run_checks(tables: dict[str, DataFrame], summary: dict | None = None) -> lis
         results += check_reviews_clean(tables["reviews_clean"])
         if summary:
             results += reconcile(tables["reviews_clean"], tables.get("daily_negative"), summary)
+    if "review_labels" in tables:
+        results += check_labels(tables["review_labels"], tables.get("reviews_clean"))
     if "daily_negative" in tables:
         results += check_daily(tables["daily_negative"], tables.get("daily_category"))
     if "forecast_features" in tables:

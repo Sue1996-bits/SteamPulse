@@ -50,7 +50,7 @@ CATEGORIES = ["crash", "performance", "match_server", "monetization"]
 # Versions are tracked independently.
 COHORT_POLICY = "strict_unedited"  # created_at == updated_at
 COHORT_VERSION = "v1"
-LABEL_VERSION = None  # set by the labeling step
+LABEL_VERSION = "rules_v1"  # rules in pipeline/labels.py; bump on any rule change
 FEATURE_VERSION = "v1"
 
 # Detection and forecast thresholds. Provisional: tune on validation only, freeze by Nov 22.

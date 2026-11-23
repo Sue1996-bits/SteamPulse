@@ -1,12 +1,14 @@
 """Run the whole pipeline in order, time each step, and optionally log it.
 
     python -m pipeline.run                                         # clean -> daily -> checks
-    python -m pipeline.run --labels PATH --label-version V         # + features and baselines
+    python -m pipeline.run --label-version V                       # + rule labels, features and baselines
+    python -m pipeline.run --labels PATH --label-version V         # same, with labels from PATH
     python -m pipeline.run ... --publish --log                     # publish, add rows to docs/scale_log.md
 
 Steps run in one Spark session, so the first step's time includes Spark startup.
-Without labels, the steps that need them (daily_category, features, baselines)
-are skipped. Use --log only for deliberate measured runs, so test reruns don't
+With --label-version and no --labels, pipeline.labels writes the rule labels
+first and the later steps read them. Without either, the steps that need labels
+(daily_category, features, baselines) are skipped. Use --log only for deliberate measured runs, so test reruns don't
 end up in the scale log.
 """
 import argparse
@@ -16,6 +18,7 @@ from datetime import date
 from pathlib import Path
 
 from pipeline import aggregate, baselines, checks, clean, config, features
+from pipeline import labels as rule_labels
 from pipeline.config import get_spark
 from pipeline.manifest import describe_output
 from pipeline.profile_raw import _bytes as _gb_mb, append_scale_log, parquet_bytes
@@ -69,6 +72,14 @@ def main(labels: Path | None, label_version: str | None, publish: bool, log: boo
                         _bytes(raw["compressed_selected"]), _bytes(raw["uncompressed_selected"]),
                         raw["rows"], out, "5 games, window, unedited, valid rows", sec,
                         f"includes Spark startup; quarantine in data/quarantine/"))
+
+    if label_version and labels is None:
+        src = _out(staging / "reviews_clean")
+        sec = timed(rule_labels.main, label_version)
+        labels = rule_labels.OUT_DIR
+        rows.append(log_row("labels", "reviews_clean", "review_id, text_normalized", _bytes(src["bytes"]), "-",
+                            src["rows"], _out(labels / f"label_version={label_version}"),
+                            "English negatives", sec, f"{label_version} rules"))
 
     sec = timed(aggregate.main, labels, label_version)
     src = _out(staging / "reviews_clean")

@@ -67,15 +67,17 @@ One command runs every step in order and then the quality checks:
 
 ```bash
 make pipeline                                       # clean -> daily -> checks
-make pipeline LABELS=path LABEL_VERSION=v           # + daily_category, features, baselines
-make pipeline LABELS=path LABEL_VERSION=v PUBLISH=1 # and publish if every check passes
+make pipeline LABEL_VERSION=rules_v1                # + rule labels, daily_category, features, baselines
+make pipeline LABEL_VERSION=rules_v1 PUBLISH=1      # and publish if every check passes
+make pipeline LABELS=path LABEL_VERSION=v           # use labels from another file instead of the rules
 ```
 
 Add `LOG=1` to a measured run to append its timings to `docs/scale_log.md`. Each step also has its own command:
 
 ```bash
 make clean-reviews     # reviews_clean for the chosen games -> data/staging/reviews_clean/
-make label-sample      # hand-labeling sample -> data/samples/
+make label-sample      # hand-labeling sample -> data/samples/ (see docs/labeling_guide.md)
+make labels            # rule labels for English negatives -> data/staging/review_labels/
 make daily             # daily_negative (+ daily_category with LABELS=path LABEL_VERSION=v)
 make features LABEL_VERSION=v   # forecast_features + feature_manifest.json
 make baselines         # persistence and rolling-28 forecasts + MAE
@@ -99,15 +101,17 @@ flowchart LR
     raw[("Raw snapshot<br/>663 Parquet files")] --> clean["clean"]
     clean --> rc[("reviews_clean")]
     clean -.-> q[("quarantine")]
+    rc --> lab["labels"]
+    lab --> labels[("review_labels")]
     rc --> daily["daily"]
-    labels[("review_labels")] --> daily
+    labels --> daily
     daily --> dn[("daily_negative")]
     daily --> dc[("daily_category")]
     dc --> feat["features"]
     feat --> ff[("forecast_features")]
     ff --> base["baselines"]
     base --> fr[("forecast_results")]
-    rc & dn & dc & ff & fr --> chk{"checks"}
+    rc & labels & dn & dc & ff & fr --> chk{"checks"}
     chk -->|all pass| pub[("data/published/<br/>+ manifest.json")]
 ```
 
@@ -116,7 +120,7 @@ Every step reads and writes Parquet under `data/` (ignored by Git), partitioned 
 | Table | One row per | What it holds |
 |---|---|---|
 | `reviews_clean` | review | Unedited reviews in the analysis window for the chosen games, every language and both vote directions. String IDs, UTC timestamps, raw and normalized text. |
-| `review_labels` | review and category | Complaint labels from the labeling rules. A negative review with no label still counts as unclassified. |
+| `review_labels` | review and category | Complaint labels from the rules in `pipeline/labels.py`, with the rule ID and matched text as evidence. Partitioned by `label_version`. A negative review with no label still counts as unclassified. |
 | `daily_negative` | game and day | English negative reviews per UTC day, and whether the day is `covered` or a `gap` (null counts). |
 | `daily_category` | game, day and category | Category count, total negatives and their share for each day. |
 | `forecast_features` | game, day and category | Features using only data up to that day, the next-7-day target in its own column, and an eligibility flag. |
