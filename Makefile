@@ -3,7 +3,7 @@ JAVA_MAJOR := $(shell java -version 2>&1 | awk -F'"' '/version/ {print $$2}' | c
 
 FILES ?= 2
 
-.PHONY: help check-java setup lock test download-sample download profile select-games clean-reviews label-sample daily manifest clean-cache
+.PHONY: help check-java setup lock test download-sample download profile select-games clean-reviews label-sample daily features baselines checks publish pipeline manifest clean-cache
 
 help:  ## Show available commands
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -43,6 +43,21 @@ label-sample: check-java  ## Draw the hand-labeling sample (300 train + 150 late
 
 daily: check-java  ## Build daily_negative (and daily_category with LABELS=path LABEL_VERSION=v)
 	uv run python -m pipeline.aggregate $(if $(LABELS),--labels $(LABELS) --label-version $(LABEL_VERSION))
+
+features: check-java  ## Build forecast_features + feature_manifest.json (LABEL_VERSION=v required)
+	uv run python -m pipeline.features --label-version $(LABEL_VERSION)
+
+baselines: check-java  ## Persistence and rolling-28 forecast_results + baseline_scores.csv
+	uv run python -m pipeline.baselines
+
+checks: check-java  ## Run quality checks on data/staging/ -> check_report.json
+	uv run python -m pipeline.checks
+
+publish: check-java  ## Run checks, then copy staging to data/published/ with manifest.json
+	uv run python -m pipeline.checks --publish
+
+pipeline: check-java  ## Run every step in order (LABELS=path LABEL_VERSION=v, PUBLISH=1, LOG=1 for the scale log)
+	uv run python -m pipeline.run $(if $(LABELS),--labels $(LABELS) --label-version $(LABEL_VERSION)) $(if $(PUBLISH),--publish) $(if $(LOG),--log)
 
 manifest:  ## Write data/published/manifest.json for the published outputs
 	uv run python -m pipeline.manifest

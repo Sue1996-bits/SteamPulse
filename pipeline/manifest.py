@@ -69,7 +69,8 @@ def describe_output(path: Path) -> dict:
     }
 
 
-def build_manifest(outputs: dict[str, Path], run_id: str | None = None) -> dict:
+def build_manifest(outputs: dict[str, Path], run_id: str | None = None,
+                   label_version: str | None = None) -> dict:
     return {
         "run_id": run_id or uuid.uuid4().hex[:12],
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -80,7 +81,7 @@ def build_manifest(outputs: dict[str, Path], run_id: str | None = None) -> dict:
         "versions": {
             "cohort_policy": config.COHORT_POLICY,
             "cohort_version": config.COHORT_VERSION,
-            "label_version": config.LABEL_VERSION,
+            "label_version": label_version or config.LABEL_VERSION,
             "feature_version": config.FEATURE_VERSION,
         },
         "code": _code_revision(),
@@ -90,10 +91,10 @@ def build_manifest(outputs: dict[str, Path], run_id: str | None = None) -> dict:
 
 
 def write_manifest(outputs: dict[str, Path], out_dir: Path = config.PUBLISH_DIR,
-                   run_id: str | None = None) -> Path:
+                   run_id: str | None = None, label_version: str | None = None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / MANIFEST_NAME
-    path.write_text(json.dumps(build_manifest(outputs, run_id), indent=2) + "\n")
+    path.write_text(json.dumps(build_manifest(outputs, run_id, label_version), indent=2) + "\n")
     return path
 
 
