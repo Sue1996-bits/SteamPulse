@@ -13,6 +13,39 @@ Run contract checks with
 
 ## Demo and offline backup
 
+### Team handoff replay (Apex Legends)
+
+Unzip Wren's `steampulse_published_rules_v2_gbt_v2.zip` into `data/staging/` and point the API
+at the `published/` directory inside it:
+
+```sh
+unzip steampulse_published_rules_v2_gbt_v2.zip -d data/staging/gbt_v2
+export STEAMPULSE_DATA_DIR="$PWD/data/staging/gbt_v2/published"
+uv run --with-requirements application/requirements.txt python -m uvicorn application.api:app
+```
+
+In a second terminal, run `uv run --with-requirements application/requirements.txt streamlit run application/dashboard.py`.
+The dashboard opens on Apex Legends and 2023-08-27, the agreed replay date. The API's trained-model
+forecast for 2023-08-28 through 2023-09-03 flags `match_server` as emerging: its observed recent
+share is 17.54%, against a 12.22% baseline. The saved GBT model predicts 13.09%; persistence
+predicts 17.54%. The realized share was 19.30%, so the model underestimates this emerging issue
+at the alert's start. This is a useful limitation to explain: the alert detects the observed rise,
+while the forecasting model adjusts more slowly. In validation, the model's macro MAE was 1.61
+percentage points versus 1.87 for persistence, but overall validation performance does not imply
+that the model wins on every replay day or category.
+
+Verify the real handoff after starting the API:
+
+```sh
+uv run --with-requirements application/requirements.txt python -m application.check_apex_replay "$STEAMPULSE_DATA_DIR"
+```
+
+This checks all four API predictions against the handoff's saved offline predictions and checks
+the model cutoff, feature and label versions, and the `match_server` alert. Keep the extracted
+bundle under `data/staging/`; do not commit the review text or saved model files.
+
+### Synthetic offline backup
+
 Select fixture game 999 and February 4, 2023. The default trained method reports the missing artifact.
 Select persistence. Crash reached 26 of 100 recent negative reviews (26%), compared with
 28 of 280 (10%) in the preceding 28 days. The observed increase is 16 percentage points.
