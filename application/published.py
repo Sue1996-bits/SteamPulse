@@ -34,6 +34,10 @@ class Publication:
             if self.model["features"] != self.order:
                 raise ValueError("Model feature order mismatch")
             self.cutoff = date.fromisoformat(self.model["training_label_end"])
+            self.replay_start = max(self.cutoff, date.fromisoformat(
+                self.model.get("replay_start", self.model["training_label_end"])
+            ))
+            self.validation_methods = self._validation_methods()
             self.spark_models = {}
             if self.model["format"] == "spark_pipeline":
                 from pyspark.ml import PipelineModel
@@ -52,6 +56,14 @@ class Publication:
                     math.isfinite(v) for v in [model["intercept"], *model["weights"]]
                 ):
                     raise ValueError("Invalid linear model parameters")
+
+    def _validation_methods(self):
+        methods = {"persistence_v1": "persistence", "rolling28_v1": "rolling28",
+                   self.model["model_version"]: "trained_model"}
+        winners = {category: methods.get(info.get("validation_winner"))
+                   for category, info in self.model["categories"].items()}
+        categories = {"crash", "performance", "match_server", "monetization"}
+        return winners if winners.keys() == categories and all(winners.values()) else {}
 
     def table(self, name):
         df = pd.read_parquet(self.root / name)
