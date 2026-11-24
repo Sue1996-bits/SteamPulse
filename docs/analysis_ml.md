@@ -120,16 +120,16 @@ Rule versions:
 | `rules_v1` | First keyword rules | Unit examples only |
 | `rules_v2` | `perf_fps` no longer matches "fps" on its own. It needs a frame-rate context: a number ("40fps"), "fps drops", "low fps", "my fps", or "frame rate" | Spot check on the real English negatives: in many reviews "fps" names the genre (first-person shooter). The stricter rule removed 463 of 865 matches; most removed matches in a random sample were genre uses |
 
-### 4.2 `pipeline/label_eval.py` — rules vs hand labels
+### 4.2 `pipeline/label_eval.py` — hand labels: split, agreement, gold, scores
 
 | | |
 |---|---|
-| Purpose | Measure rule quality and annotator agreement; produce the committed gold file |
-| Input | Filled label-sample CSVs (1/0 in each category column; incomplete rows are skipped), `reviews_clean` for text |
-| Output | `data/staging/label_eval_<v>_<period>.csv`; `data/samples/label_errors_<v>_<period>.csv`; `data/samples/disagreements_<a>_<b>.csv`; `labels/<name>.csv` (IDs and labels only) |
-| Subcommands | `score GOLD [--period train\|later]`, `agree A B`, `export GOLD` |
+| Purpose | Split the sample between annotators, measure agreement, build the gold file, measure rule quality |
+| Input | The label sample and each annotator's filled file. A row counts as labeled only when all four category cells hold 1 or 0; incomplete and blank rows are listed by review ID and never counted. `reviews_clean` supplies the text |
+| Output | `data/samples/label_sample_<seed>_<name>.csv` (split); `data/samples/label_gold_<seed>.csv` (gold, with `period` restored); `data/staging/label_eval_<v>_<period>.csv`; `data/samples/label_errors_<v>_<period>.csv`; `data/samples/disagreements_<a>_<b>.csv`; `labels/<name>.csv` (IDs and labels only) |
+| Subcommands | `split SAMPLE --people ... [--out-dir] [--force]` (never overwrites without `--force`; every sample review is primary exactly once), `agree A B`, `gold SAMPLE FILES... [--out] [--partial] [--force]` (stops while a primary row is unfinished; `--partial` writes a separate `_partial` preview and can never target the official gold file; existing outputs need `--force`; the sample and inputs are never overwritten; files are written atomically), `score GOLD [--period train\|later]` (refuses a missing or invalid `period`), `export GOLD` |
 | Command | `make label-eval GOLD=... [PERIOD=later]` |
-| Tests | `tests/test_label_eval.py`: partial files, invalid cells, spreadsheet byte-order mark, metrics and kappa by hand, rules scored on their own examples |
+| Tests | `tests/test_label_eval.py`: complete, incomplete and blank rows, invalid cells, spreadsheet byte-order mark, metrics and kappa by hand, F1 of 0, split with a remainder and bad names, no overwriting, gold refusing unfinished rows, partial previews kept apart from the official gold, invalid periods, rules scored on their own examples |
 
 ### 4.3 `pipeline/splits.py` — chronological splits
 
@@ -212,7 +212,7 @@ Directory layout inside a publication: `model_manifest.json` at the root, models
 
 ### 6.1 Labels
 
-Per category on hand-labeled reviews: support (gold positives), predicted, TP, FP, FN, precision = TP/(TP+FP), recall = TP/(TP+FN), F1. Empty denominators give null, not 0. The `any` row compares "at least one category" against unclassified. The `train` period is for development; the `later` period is scored once, after the rules are frozen. A keyword-enriched sample, if used, is reported separately and never as a population estimate. Agreement: percent agreement and Cohen's kappa per category, on reviews both annotators labeled.
+Per category on hand-labeled reviews: support (gold positives), predicted, TP, FP, FN, precision = TP/(TP+FP), recall = TP/(TP+FN), F1 = 2TP/(2TP+FP+FN). Empty denominators give null, not 0, so F1 is 0 when there are errors but no hits and null only when the category is absent from both gold and predictions. The `any` row compares "at least one category" against unclassified. The `train` period is for development; the `later` period is scored once, after the rules are frozen. A keyword-enriched sample, if used, is reported separately and never as a population estimate. Agreement: percent agreement and Cohen's kappa per category, on reviews both annotators labeled.
 
 ### 6.2 Alerts
 
@@ -257,7 +257,9 @@ STEAMPULSE_DATA_DIR=data/published ...          # C's API (application/README.md
 
 # Labels
 make label-sample APPS="1172470 1517290 1811260 1085660 359550"
+python -m pipeline.label_eval split data/samples/label_sample_226.csv --people yifan isabella yunseo
 python -m pipeline.label_eval agree data/samples/label_sample_226_<a>.csv data/samples/label_sample_226_<b>.csv
+python -m pipeline.label_eval gold data/samples/label_sample_226.csv data/samples/label_sample_226_*.csv
 make label-eval GOLD=data/samples/label_gold_226.csv
 python -m pipeline.label_eval export data/samples/label_gold_226.csv
 
@@ -301,7 +303,7 @@ Every output is tied to `snapshot_id`, `cohort_version`, `label_version`, `featu
 | Test file | Tests | Covers |
 |---|---|---|
 | `tests/test_labels.py` | 34 | rules, negation, schema, coverage, handoff to `aggregate`, label checks |
-| `tests/test_label_eval.py` | 6 | reading hand labels, metrics, kappa, error lists |
+| `tests/test_label_eval.py` | 20 | reading hand labels, metrics, kappa, error lists, split and gold, file safety (official gold, inputs, existing outputs), periods |
 | `tests/test_train.py` | 13 | splits, bundle, scores, exclusions, card, checks, parity, residual add-back, `gbt_v1` reproduction, MLflow, C's API (skips without `application/`) |
 | `tests/test_alerts.py` | 4 | consistency with `observed_status`, measures, grid |
 
