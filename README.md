@@ -135,6 +135,8 @@ Every step reads and writes Parquet under `data/` (ignored by Git), partitioned 
 
 `make train` fits one Spark GBT regressor per category on the five games pooled, and writes everything the API needs to `data/staging/`: `model/<category>/` (Spark PipelineModels, imputer included), `model_manifest.json`, `model_scores.csv` and `model_feature_importance.csv`. Forecast origins are split by their target week: train ends by `TRAIN_END` (2023-05-31), validation by `VAL_END` (2023-08-15), and test comes after. The week before each boundary is purged. Settings are chosen on validation, compared with both baselines on the same rows, then refit on train and validation. Every run is logged to MLflow in `mlruns/`.
 
+Labeling rules, alerts, splits, the model bundle and the scoring specification are described in [`docs/analysis_ml.md`](docs/analysis_ml.md); hand-labeling in [`docs/labeling_guide.md`](docs/labeling_guide.md); prior work in [`docs/related_work.md`](docs/related_work.md).
+
 How dates, the strict cohort and gap days are handled is in [`docs/temporal_policy.md`](docs/temporal_policy.md). Run sizes and timings are in [`docs/scale_log.md`](docs/scale_log.md).
 
 ### Data quality
