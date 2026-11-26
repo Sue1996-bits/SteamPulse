@@ -1,7 +1,7 @@
 """Emerging-issue alerts: how often they fire, how they depend on the thresholds, and what follows them.
 
-    python -m pipeline.alerts --label-version rules_v1                 # train + validation
-    python -m pipeline.alerts --label-version rules_v1 --include-test  # once, thresholds frozen
+    python -m pipeline.alerts --label-version rules_v2                 # train + validation
+    python -m pipeline.alerts --label-version rules_v2 --include-test  # once, thresholds frozen
 
 The alert is the observed status from baselines.observed_status: an eligible row
 is `emerging` when c_7d >= MIN_C7 and lift_pp >= 100 x MIN_LIFT (the latest 7 days

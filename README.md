@@ -67,8 +67,8 @@ One command runs every step in order and then the quality checks:
 
 ```bash
 make pipeline                                       # clean -> daily -> checks
-make pipeline LABEL_VERSION=rules_v1                # + rule labels, daily_category, features, baselines
-make pipeline LABEL_VERSION=rules_v1 PUBLISH=1      # and publish if every check passes
+make pipeline LABEL_VERSION=rules_v2                # + rule labels, daily_category, features, baselines
+make pipeline LABEL_VERSION=rules_v2 PUBLISH=1      # and publish if every check passes
 make pipeline LABELS=path LABEL_VERSION=v           # use labels from another file instead of the rules
 ```
 
@@ -82,8 +82,8 @@ make label-eval GOLD=data/samples/label_gold_226.csv   # rules vs hand labels: p
 make daily             # daily_negative (+ daily_category with LABELS=path LABEL_VERSION=v)
 make features LABEL_VERSION=v   # forecast_features + feature_manifest.json
 make baselines         # persistence and rolling-28 forecasts + MAE
-make alerts LABEL_VERSION=rules_v1  # alert counts, threshold sensitivity, what follows an alert
-make train LABEL_VERSION=rules_v1   # GBT per category, MLflow run, model bundle for the API
+make alerts LABEL_VERSION=rules_v2  # alert counts, threshold sensitivity, what follows an alert
+make train LABEL_VERSION=rules_v2   # GBT per category, MLflow run, model bundle for the API
 make mlflow-ui         # browse training runs at http://127.0.0.1:5000
 make checks            # quality checks on data/staging/
 make publish           # checks, then copy to data/published/ with manifest.json

@@ -53,7 +53,7 @@ CATEGORIES = ["crash", "performance", "match_server", "monetization"]
 # Versions are tracked independently.
 COHORT_POLICY = "strict_unedited"  # created_at == updated_at
 COHORT_VERSION = "v1"
-LABEL_VERSION = "rules_v1"  # rules in pipeline/labels.py; bump on any rule change
+LABEL_VERSION = "rules_v2"  # rules in pipeline/labels.py; bump on any rule change
 FEATURE_VERSION = "v1"
 MODEL_VERSION = "gbt_v1"  # pipeline/train.py; bump when the model design or search changes
 

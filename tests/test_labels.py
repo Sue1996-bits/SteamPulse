@@ -33,6 +33,11 @@ CASES = [
     ("crashes, 30 fps, queue times of 10 minutes and microtransactions everywhere",
      {"crash", "performance", "match_server", "monetization"}),
     ("not fun", set()),
+    ("best fps game ever made, too bad about the cheaters", set()),      # "fps" as the genre
+    ("a fun goofy fps, but the servers are trash", {"match_server"}),
+    ("i get 40fps on low settings", {"performance"}),
+    ("my fps tanks after an hour", {"performance"}),
+    ("no fps drops at all, just a boring game", set()),
 ]
 
 
