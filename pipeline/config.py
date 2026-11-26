@@ -55,7 +55,7 @@ COHORT_POLICY = "strict_unedited"  # created_at == updated_at
 COHORT_VERSION = "v1"
 LABEL_VERSION = "rules_v2"  # rules in pipeline/labels.py; bump on any rule change
 FEATURE_VERSION = "v1"
-MODEL_VERSION = "gbt_v1"  # pipeline/train.py; bump when the model design or search changes
+MODEL_VERSION = "gbt_v2"  # pipeline/train.py: residual over share_28d; bump when the model design changes
 
 # Detection and forecast thresholds. Provisional: tune on validation only, freeze by Nov 22.
 HISTORY_DAYS = 35
