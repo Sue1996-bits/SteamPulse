@@ -82,6 +82,8 @@ make label-eval GOLD=data/samples/label_gold_226.csv   # rules vs hand labels: p
 make daily             # daily_negative (+ daily_category with LABELS=path LABEL_VERSION=v)
 make features LABEL_VERSION=v   # forecast_features + feature_manifest.json
 make baselines         # persistence and rolling-28 forecasts + MAE
+make train LABEL_VERSION=rules_v1   # GBT per category, MLflow run, model bundle for the API
+make mlflow-ui         # browse training runs at http://127.0.0.1:5000
 make checks            # quality checks on data/staging/
 make publish           # checks, then copy to data/published/ with manifest.json
 ```
@@ -126,6 +128,11 @@ Every step reads and writes Parquet under `data/` (ignored by Git), partitioned 
 | `daily_category` | game, day and category | Category count, total negatives and their share for each day. |
 | `forecast_features` | game, day and category | Features using only data up to that day, the next-7-day target in its own column, and an eligibility flag. |
 | `forecast_results` | game, day, category and method | Observed status (`emerging`, `not_flagged`, `insufficient_data`) and the next-week forecast. |
+| `model_predictions` | game, day, category and model | Same columns as `forecast_results`, from the deployed GBT model, only for days on or after its `training_label_end`. |
+
+### Model
+
+`make train` fits one Spark GBT regressor per category on the five games pooled, and writes everything the API needs to `data/staging/`: `model/<category>/` (Spark PipelineModels, imputer included), `model_manifest.json`, `model_scores.csv` and `model_feature_importance.csv`. Forecast origins are split by their target week: train ends by `TRAIN_END` (2023-05-31), validation by `VAL_END` (2023-08-15), and test comes after. The week before each boundary is purged. Settings are chosen on validation, compared with both baselines on the same rows, then refit on train and validation. Every run is logged to MLflow in `mlruns/`.
 
 How dates, the strict cohort and gap days are handled is in [`docs/temporal_policy.md`](docs/temporal_policy.md). Run sizes and timings are in [`docs/scale_log.md`](docs/scale_log.md).
 
