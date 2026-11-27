@@ -7,8 +7,10 @@ Each table that exists gets its checks: schema, unique key, allowed values, null
 and ranges, plus cross-table checks (the daily grid, and counts reconciled with
 clean_summary.json). Results go to data/staging/check_report.json.
 
-Publishing copies every checked table to data/published/ and writes
-manifest.json there. If any check fails, nothing is copied.
+Publishing empties data/published/, then copies every checked table there and
+writes manifest.json, so the folder only ever holds one run. review_labels keeps
+only the label_version being published (staging can hold several side by side).
+If any check fails, nothing is copied.
 """
 import argparse
 import json
@@ -32,7 +34,9 @@ TABLES = {
     "forecast_results": (config.FORECAST_RESULTS_COLS, config.FORECAST_RESULTS_KEY),
     "model_predictions": (config.FORECAST_RESULTS_COLS, config.FORECAST_RESULTS_KEY),
 }
-EXTRA_FILES = ["feature_manifest.json", "clean_summary.json", "baseline_scores.csv",
+# baseline_scores.csv stays in staging: its "later" period mixes validation and test.
+# model_scores.csv has the same baselines on the train/validation/test splits.
+EXTRA_FILES = ["feature_manifest.json", "clean_summary.json",
                "model_manifest.json", "model_parity.csv", "model_scores.csv", "model_row_counts.csv",
                "model_errors.csv", "model_feature_importance.csv", "model_card.md",
                "alert_summary.csv", "alert_sensitivity.csv"]
@@ -252,24 +256,37 @@ def run_checks(tables: dict[str, DataFrame], summary: dict | None = None) -> lis
     return results
 
 
+SKIP = shutil.ignore_patterns("*.crc", "_SUCCESS")
+
+
+def _copy_labels(src, dest, label_version: str | None) -> None:
+    """Copy only the published label_version folder(s) of review_labels."""
+    wanted = [src / f"label_version={v}" for v in (label_version or "").split(",") if v]
+    if not wanted or not all(w.is_dir() for w in wanted):
+        shutil.copytree(src, dest, ignore=SKIP)  # not partitioned by version, or no version given
+        return
+    for w in wanted:
+        shutil.copytree(w, dest / w.name, ignore=SKIP)
+
+
 def publish(table_names: list[str], label_version: str | None) -> None:
-    config.PUBLISH_DIR.mkdir(parents=True, exist_ok=True)
+    if config.PUBLISH_DIR.exists():
+        shutil.rmtree(config.PUBLISH_DIR)  # no files left over from an earlier run
+    config.PUBLISH_DIR.mkdir(parents=True)
     outputs = {}
     for name in table_names:
-        dest = config.PUBLISH_DIR / name
-        if dest.exists():
-            shutil.rmtree(dest)
-        shutil.copytree(config.STAGING_DIR / name, dest, ignore=shutil.ignore_patterns("*.crc", "_SUCCESS"))
+        src, dest = config.STAGING_DIR / name, config.PUBLISH_DIR / name
+        if name == "review_labels":
+            _copy_labels(src, dest, label_version)
+        else:
+            shutil.copytree(src, dest, ignore=SKIP)
         outputs[name] = dest
     for f in EXTRA_FILES:
         if (config.STAGING_DIR / f).exists():
             shutil.copy2(config.STAGING_DIR / f, config.PUBLISH_DIR / f)
     for d in EXTRA_DIRS:
         if (config.STAGING_DIR / d).exists():
-            if (config.PUBLISH_DIR / d).exists():
-                shutil.rmtree(config.PUBLISH_DIR / d)
-            shutil.copytree(config.STAGING_DIR / d, config.PUBLISH_DIR / d,
-                            ignore=shutil.ignore_patterns("*.crc", "_SUCCESS"))
+            shutil.copytree(config.STAGING_DIR / d, config.PUBLISH_DIR / d, ignore=SKIP)
     path = manifest.write_manifest(outputs, out_dir=config.PUBLISH_DIR, label_version=label_version)
     print(f"Published {', '.join(table_names)} -> {config.PUBLISH_DIR}; wrote {path.name}")
 

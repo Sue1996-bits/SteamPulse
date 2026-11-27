@@ -80,3 +80,28 @@ def test_publish_copies_tables_and_writes_manifest(tmp_path, monkeypatch, tables
     m = json.loads((published / "manifest.json").read_text())
     assert m["versions"]["label_version"] == "fixture_v1"
     assert m["outputs"]["daily_negative"]["rows"] == 70
+
+
+def test_publish_keeps_one_label_version_and_no_leftovers(tmp_path, monkeypatch):
+    spark = get_spark("test")
+    staging, published = tmp_path / "staging", tmp_path / "published"
+    rows = [("1", "crash", True, "crash_word", "crash", "old_v"),
+            ("1", "crash", True, "crash_word", "crash", "new_v"),
+            ("2", "performance", True, "perf_fps", "low fps", "new_v")]
+    labels = spark.createDataFrame(rows, ["review_id", "category", "is_match", "rule_id", "evidence", "label_version"])
+    labels.write.partitionBy("label_version").parquet(str(staging / "review_labels"))
+    (staging / "baseline_scores.csv").write_text("method_version,mae\n")
+    (staging / "clean_summary.json").write_text("{}")
+    published.mkdir()
+    (published / "stale.csv").write_text("from an earlier run")
+    monkeypatch.setattr(checks.config, "STAGING_DIR", staging)
+    monkeypatch.setattr(checks.config, "PUBLISH_DIR", published)
+
+    checks.publish(["review_labels"], "new_v")
+
+    assert [p.name for p in (published / "review_labels").iterdir()] == ["label_version=new_v"]
+    m = json.loads((published / "manifest.json").read_text())
+    assert m["outputs"]["review_labels"]["rows"] == 2
+    assert not (published / "stale.csv").exists()
+    assert not (published / "baseline_scores.csv").exists()
+    assert (published / "clean_summary.json").exists()
