@@ -91,7 +91,7 @@ make publish           # checks, then copy to data/published/ with manifest.json
 
 ### 4. Check the outputs
 
-`make checks` writes `data/staging/check_report.json`, and `make publish` copies the tables to `data/published/` only if every check passes. To rewrite the manifest for what's already published:
+`make checks` writes `data/staging/check_report.json`, and `make publish` copies the tables to `data/published/` only if every check passes. Publishing replaces the whole folder, so it only holds the latest run, with one label version. `baseline_scores.csv` stays in staging as a development check; use `model_scores.csv` for reported baseline numbers. To rewrite the manifest for what's already published:
 
 ```bash
 make manifest   # writes data/published/manifest.json

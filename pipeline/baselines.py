@@ -18,6 +18,8 @@ a forecast doesn't need c_7d >= MIN_C7. Predictions are clipped to [0, 1].
 Also writes data/staging/baseline_scores.csv: MAE per method, category and period
 on eligible rows with a target. A row is "train" when its whole target week ends
 by TRAIN_END, and "later" otherwise. Rows without a target are counted, not scored.
+A development check only, not published: "later" mixes validation and test, and
+model_scores.csv (pipeline/train.py) scores the same baselines on the real splits.
 """
 import pandas as pd
 from pyspark.sql import Column, DataFrame
